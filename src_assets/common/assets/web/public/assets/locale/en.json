@@ -164,6 +164,8 @@
     "back_button_timeout_desc": "If the Back/Select button is held down for the specified number of milliseconds, a Home/Guide button press is emulated. If set to a value < 0 (default), holding the Back/Select button will not emulate the Home/Guide button.",
     "bind_address": "Bind address",
     "bind_address_desc": "Set the specific IP address Sunshine will bind to. If left blank, Sunshine will bind to all available addresses.",
+    "web_ui_bind_address": "Web UI bind address",
+    "web_ui_bind_address_desc": "Set the IP address used by the Web UI only. If left blank, the Web UI uses the bind address above. Use 127.0.0.1 to keep the Web UI on localhost while exposing GameStream remotely.",
     "capture": "Force a Specific Capture Method",
     "capture_desc": "On automatic mode Sunshine will use the first one that works. NvFBC requires patched nvidia drivers.",
     "cert": "Certificate",
