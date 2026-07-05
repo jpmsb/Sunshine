@@ -92,7 +92,36 @@ set(CPACK_DEBIAN_PACKAGE_DEPENDS "\
             libx11-6, \
             miniupnpc, \
             openssl | libssl3")
-set(CPACK_RPM_PACKAGE_REQUIRES "\
+
+# Fedora and openSUSE use different RPM package names for the same runtime libraries.
+set(SUNSHINE_RPM_DISTRO "fedora")
+if(EXISTS "/etc/os-release")
+    file(READ "/etc/os-release" SUNSHINE_OS_RELEASE)
+    if(SUNSHINE_OS_RELEASE MATCHES "opensuse|SUSE|[[:space:]]suse")
+        set(SUNSHINE_RPM_DISTRO "suse")
+    endif()
+endif()
+
+if(SUNSHINE_RPM_DISTRO STREQUAL "suse")
+    set(CPACK_RPM_PACKAGE_REQUIRES "\
+            ${CPACK_RPM_PLATFORM_PACKAGE_REQUIRES} \
+            libcap2, \
+            libcurl4, \
+            libdrm2, \
+            libevdev2, \
+            libopusenc0, \
+            libva2, \
+            libwayland-client0, \
+            libX11-6, \
+            libgbm1, \
+            libminiupnpc21, \
+            libnuma1, \
+            libopenssl3, \
+            libpulse0, \
+            libvulkan1, \
+            which >= 2.21")
+else()
+    set(CPACK_RPM_PACKAGE_REQUIRES "\
             ${CPACK_RPM_PLATFORM_PACKAGE_REQUIRES} \
             libcap >= 2.22, \
             libcurl >= 7.0, \
@@ -108,6 +137,7 @@ set(CPACK_RPM_PACKAGE_REQUIRES "\
             openssl >= 3.0.2, \
             pulseaudio-libs >= 10.0, \
             which >= 2.21")
+endif()
 list(APPEND CPACK_FREEBSD_PACKAGE_DEPS
         audio/opus
         ftp/curl
@@ -158,10 +188,17 @@ if(${SUNSHINE_TRAY} STREQUAL 1)
                 ${CPACK_DEBIAN_PACKAGE_DEPENDS}, \
                 libnotify4"
     )
-    set(CPACK_RPM_PACKAGE_REQUIRES "\
-                ${CPACK_RPM_PACKAGE_REQUIRES}, \
-                libnotify >= 0.8.0"
-    )
+    if(SUNSHINE_RPM_DISTRO STREQUAL "suse")
+        set(CPACK_RPM_PACKAGE_REQUIRES "\
+                    ${CPACK_RPM_PACKAGE_REQUIRES}, \
+                    libnotify4"
+        )
+    else()
+        set(CPACK_RPM_PACKAGE_REQUIRES "\
+                    ${CPACK_RPM_PACKAGE_REQUIRES}, \
+                    libnotify >= 0.8.0"
+        )
+    endif()
     list(APPEND CPACK_FREEBSD_PACKAGE_DEPS
             devel/libnotify
     )
@@ -171,11 +208,19 @@ if(${SUNSHINE_TRAY} STREQUAL 1)
                     libqt6widgets6, \
                     libqt6svg6"
         )
-        set(CPACK_RPM_PACKAGE_REQUIRES "\
-                    ${CPACK_RPM_PACKAGE_REQUIRES}, \
-                    qt6-qtbase, \
-                    qt6-qtsvg"
-        )
+        if(SUNSHINE_RPM_DISTRO STREQUAL "suse")
+            set(CPACK_RPM_PACKAGE_REQUIRES "\
+                        ${CPACK_RPM_PACKAGE_REQUIRES}, \
+                        libQt6Widgets6, \
+                        libQt6Svg6"
+            )
+        else()
+            set(CPACK_RPM_PACKAGE_REQUIRES "\
+                        ${CPACK_RPM_PACKAGE_REQUIRES}, \
+                        qt6-qtbase, \
+                        qt6-qtsvg"
+            )
+        endif()
         list(APPEND CPACK_FREEBSD_PACKAGE_DEPS
                 x11-toolkits/qt6-widgets
                 graphics/qt6-svg
@@ -186,11 +231,19 @@ if(${SUNSHINE_TRAY} STREQUAL 1)
                     libqt5widgets5, \
                     libqt5svg5"
         )
-        set(CPACK_RPM_PACKAGE_REQUIRES "\
-                    ${CPACK_RPM_PACKAGE_REQUIRES}, \
-                    qt5-qtbase, \
-                    qt5-qtsvg"
-        )
+        if(SUNSHINE_RPM_DISTRO STREQUAL "suse")
+            set(CPACK_RPM_PACKAGE_REQUIRES "\
+                        ${CPACK_RPM_PACKAGE_REQUIRES}, \
+                        libQt5Widgets5, \
+                        libQt5Svg5"
+            )
+        else()
+            set(CPACK_RPM_PACKAGE_REQUIRES "\
+                        ${CPACK_RPM_PACKAGE_REQUIRES}, \
+                        qt5-qtbase, \
+                        qt5-qtsvg"
+            )
+        endif()
         list(APPEND CPACK_FREEBSD_PACKAGE_DEPS
                 x11-toolkits/qt5-widgets
                 graphics/qt5-svg
