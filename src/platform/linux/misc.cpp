@@ -1232,8 +1232,6 @@ namespace platf {
     lizardbyte::common::set_env("AMD_DEBUG", "lowlatencyenc");
 
     // enable Vulkan video extensions for AMD RADV
-    lizardbyte::common::set_env("RADV_PERFTEST", "video_encode");
-    // Above is deprecated on Mesa 26.1+ and replaced by (keep both to ensure best compatibility):
     lizardbyte::common::append_env("RADV_EXPERIMENTAL", "video_encode", ",");
 
     // These are allowed to fail.
