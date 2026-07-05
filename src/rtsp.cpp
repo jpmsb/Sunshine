@@ -554,9 +554,22 @@ namespace rtsp_stream {
 
       auto launch_session {launch_event.view(0s)};
       if (launch_session) {
-        // Associate the current RTSP session with this socket and start reading
-        socket->session = launch_session;
-        socket->read();
+        const auto peer_address = net::addr_to_normalized_string(socket->sock.remote_endpoint().address());
+        if (!launch_session->expected_client_address.empty() && peer_address != launch_session->expected_client_address) {
+          BOOST_LOG(warning)
+            << "Rejecting RTSP connection from unexpected address ["sv
+            << peer_address
+            << "], expected ["sv
+            << launch_session->expected_client_address
+            << ']';
+
+          boost::system::error_code close_ec;
+          socket->sock.close(close_ec);
+        } else {
+          // Associate the current RTSP session with this socket and start reading
+          socket->session = launch_session;
+          socket->read();
+        }
       } else {
         // This can happen due to normal things like port scanning, so let's not make these visible by default
         BOOST_LOG(debug) << "No pending session for incoming RTSP connection"sv;
