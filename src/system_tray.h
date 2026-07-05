@@ -75,6 +75,25 @@ namespace system_tray {
   void update_tray_playing(std::string app_name);
 
   /**
+   * @brief Update the tray icon to reflect whether any clients are streaming.
+   *
+   * @param active True when at least one client is actively streaming.
+   */
+  void set_tray_streaming_active(bool active);
+
+  /**
+   * @brief Show a desktop notification when a client connects to a stream.
+   *
+   * @param label Display label for the connected client.
+   */
+  void notify_client_connected(const std::string &label);
+
+  /**
+   * @brief Rebuild the connected-clients submenu in the system tray.
+   */
+  void refresh_connected_clients_menu();
+
+  /**
    * @brief Sets the tray icon in pausing mode (stream stopped but app running) and spawns the appropriate notification
    * @param app_name The paused application name
    */
