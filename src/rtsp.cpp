@@ -27,10 +27,15 @@ extern "C" {
 #include "input.h"
 #include "logging.h"
 #include "network.h"
+#include "nvhttp.h"
+#include "process.h"
 #include "rtsp.h"
 #include "stream.h"
 #include "sync.h"
 #include "video.h"
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+  #include "system_tray.h"
+#endif
 
 namespace asio = boost::asio;
 
@@ -667,10 +672,16 @@ namespace rtsp_stream {
       for (auto i = _session_slots->begin(); i != _session_slots->end();) {
         auto &slot = *(*i);
         if (all || stream::session::state(slot) == stream::session::state_e::STOPPING) {
-          stream::session::stop(slot);
+          if (stream::session::state(slot) != stream::session::state_e::STOPPING) {
+            stream::session::stop(slot);
+          }
           stream::session::join(slot);
-
           i = _session_slots->erase(i);
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+          if (_session_slots->empty() && stream::session::running_count() == 0 && proc::proc.running()) {
+            system_tray::update_tray_pausing(proc::proc.get_last_run_app_name());
+          }
+#endif
         } else {
           i++;
         }
@@ -694,6 +705,76 @@ namespace rtsp_stream {
           i++;
         }
       }
+    }
+
+    /**
+     * @brief Terminate an active session by launch-session ID.
+     *
+     * @param session_id Launch-session identifier for the stream to terminate.
+     */
+    void terminate_by_id(uint32_t session_id) {
+      auto lg = _session_slots.lock();
+      for (auto &slot_ptr : *_session_slots) {
+        auto &slot = *slot_ptr;
+        if (stream::session::launch_session_id(slot) == session_id) {
+          BOOST_LOG(info) << "Terminating session "sv << session_id;
+          stream::session::stop(slot);
+          return;
+        }
+      }
+      BOOST_LOG(warning) << "Session "sv << session_id << " not found for disconnect"sv;
+    }
+
+    /**
+     * @brief Update the paused state for a session by launch-session ID.
+     *
+     * @param session_id Launch-session identifier for the stream to update.
+     * @param paused True to pause the session, false to resume it.
+     */
+    void set_paused_by_id(uint32_t session_id, bool paused) {
+      auto lg = _session_slots.lock();
+      for (auto &slot_ptr : *_session_slots) {
+        auto &slot = *slot_ptr;
+        if (stream::session::launch_session_id(slot) == session_id) {
+          stream::session::set_paused(slot, paused);
+          BOOST_LOG(info) << "Session "sv << session_id << (paused ? " paused"sv : " resumed"sv);
+          return;
+        }
+      }
+      BOOST_LOG(warning) << "Session "sv << session_id << " not found for pause/resume"sv;
+    }
+
+    /**
+     * @brief List active streaming sessions.
+     *
+     * @return Active session metadata for each running stream.
+     */
+    std::vector<active_session_info_t> list_sessions() {
+      std::vector<active_session_info_t> sessions;
+      auto lg = _session_slots.lock();
+
+      for (auto &slot_ptr : *_session_slots) {
+        auto &slot = *slot_ptr;
+        if (!stream::session::is_connected(slot)) {
+          continue;
+        }
+        const auto metadata = nvhttp::get_client_metadata_by_cert(stream::session::client_cert(slot));
+        const auto endpoint = stream::session::peer_endpoint(slot);
+
+        active_session_info_t info;
+        info.session_id = stream::session::launch_session_id(slot);
+        info.uuid = metadata.uuid;
+        info.name = metadata.name;
+        info.address = endpoint.first;
+        info.port = endpoint.second;
+        info.label = stream::session::format_session_label(endpoint.first, endpoint.second, metadata.name);
+        info.state = stream::session::state(slot);
+        info.paused = stream::session::paused(slot);
+        info.connected = stream::session::is_connected(slot);
+        sessions.push_back(std::move(info));
+      }
+
+      return sessions;
     }
 
     /**
@@ -763,9 +844,6 @@ namespace rtsp_stream {
   }
 
   int session_count() {
-    // Ensure session_count is up-to-date
-    server.clear(false);
-
     return server.session_count();
   }
 
@@ -778,6 +856,45 @@ namespace rtsp_stream {
    */
   void terminate_sessions_by_cert(std::string_view cert) {
     server.clear_by_cert(cert);
+  }
+
+  std::vector<active_session_info_t> list_active_sessions() {
+    return server.list_sessions();
+  }
+
+  void terminate_session(uint32_t session_id) {
+    server.terminate_by_id(session_id);
+  }
+
+  void terminate_session_by_uuid(std::string_view uuid) {
+    const auto cert = nvhttp::get_cert_by_uuid(uuid);
+    if (!cert.empty()) {
+      terminate_sessions_by_cert(cert);
+    }
+  }
+
+  void pause_session(uint32_t session_id) {
+    server.set_paused_by_id(session_id, true);
+  }
+
+  void resume_session(uint32_t session_id) {
+    server.set_paused_by_id(session_id, false);
+  }
+
+  void pause_session_by_uuid(std::string_view uuid) {
+    for (const auto &info : list_active_sessions()) {
+      if (info.uuid == uuid) {
+        pause_session(info.session_id);
+      }
+    }
+  }
+
+  void resume_session_by_uuid(std::string_view uuid) {
+    for (const auto &info : list_active_sessions()) {
+      if (info.uuid == uuid) {
+        resume_session(info.session_id);
+      }
+    }
   }
 
   /**
