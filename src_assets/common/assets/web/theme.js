@@ -125,6 +125,7 @@ export function loadAutoTheme() {
 
         window.addEventListener('DOMContentLoaded', () => {
             showActiveTheme(getPreferredTheme())
+            document.documentElement.classList.add('theme-ready')
         })
     })()
 }
