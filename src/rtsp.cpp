@@ -675,11 +675,18 @@ namespace rtsp_stream {
           if (stream::session::state(slot) != stream::session::state_e::STOPPING) {
             stream::session::stop(slot);
           }
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+          {
+            const auto endpoint = stream::session::peer_endpoint(slot);
+            const auto metadata = nvhttp::get_client_metadata_by_cert(stream::session::client_cert(slot));
+            system_tray::notify_client_disconnected(metadata.name, endpoint.first, endpoint.second);
+          }
+#endif
           stream::session::join(slot);
           i = _session_slots->erase(i);
 #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
           if (_session_slots->empty() && stream::session::running_count() == 0 && proc::proc.running()) {
-            system_tray::update_tray_pausing(proc::proc.get_last_run_app_name());
+            system_tray::set_tray_pausing_icon();
           }
 #endif
         } else {
@@ -698,7 +705,16 @@ namespace rtsp_stream {
       for (auto i = _session_slots->begin(); i != _session_slots->end();) {
         auto &slot = *(*i);
         if (stream::session::client_cert(slot) == cert) {
-          stream::session::stop(slot);
+          if (stream::session::state(slot) != stream::session::state_e::STOPPING) {
+            stream::session::stop(slot);
+          }
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+          {
+            const auto endpoint = stream::session::peer_endpoint(slot);
+            const auto metadata = nvhttp::get_client_metadata_by_cert(stream::session::client_cert(slot));
+            system_tray::notify_client_disconnected(metadata.name, endpoint.first, endpoint.second);
+          }
+#endif
           stream::session::join(slot);
           i = _session_slots->erase(i);
         } else {
