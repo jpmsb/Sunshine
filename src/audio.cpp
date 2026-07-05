@@ -14,6 +14,7 @@
 #include "globals.h"
 #include "logging.h"
 #include "platform/common.h"
+#include "stream.h"
 #include "thread_safe.h"
 #include "utility.h"
 
@@ -136,6 +137,10 @@ namespace audio {
 
     auto frame_size = config.packetDuration * stream.sampleRate / 1000;
     while (auto sample = samples->pop()) {
+      if (stream::session::is_paused(channel_data)) {
+        continue;
+      }
+
       buffer_t packet {1400};
 
       int bytes = opus_multistream_encode_float(opus.get(), sample->data(), frame_size, std::begin(packet), (opus_int32) packet.size());
