@@ -25,13 +25,14 @@
 #include "rtsp.h"
 #include "utility.h"
 
-/**
- * @def DEFAULT_APP_IMAGE_PATH
- * @brief Macro for DEFAULT APP IMAGE PATH.
- */
-#define DEFAULT_APP_IMAGE_PATH SUNSHINE_ASSETS_DIR "/box.png"
-
 namespace proc {
+  /**
+   * @brief Return the default application cover image path.
+   *
+   * @return Path to the bundled default box image.
+   */
+  std::string default_app_image_path();
+
   /**
    * @brief Boost.Process pipe stream used for child-process I/O.
    */
