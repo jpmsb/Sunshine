@@ -6,10 +6,17 @@
 
 // standard includes
 #include <atomic>
+#include <cstdint>
+#include <string>
+#include <vector>
 
 // local includes
 #include "crypto.h"
 #include "thread_safe.h"
+
+namespace stream::session {
+  enum class state_e : int;
+}
 
 namespace rtsp_stream {
   constexpr auto RTSP_SETUP_PORT = 21;  ///< GameStream base-port offset used for the RTSP setup listener.
@@ -75,6 +82,70 @@ namespace rtsp_stream {
    * @param cert Certificate data or object used by the operation.
    */
   void terminate_sessions_by_cert(std::string_view cert);
+
+  /**
+   * @brief Metadata describing an active streaming session.
+   */
+  struct active_session_info_t {
+    uint32_t session_id;  ///< RTSP launch-session identifier for the active stream.
+    std::string uuid;  ///< Paired client UUID, when known.
+    std::string name;  ///< Paired client name, when known.
+    std::string address;  ///< Normalized client IP address.
+    uint16_t port;  ///< Client control port.
+    std::string label;  ///< Display label formatted as `IP:port - name`.
+    stream::session::state_e state;  ///< Current lifecycle state for the stream session.
+    bool paused;  ///< Whether the session is paused.
+    bool connected;  ///< Whether the control channel is connected.
+  };
+
+  /**
+   * @brief List active streaming sessions.
+   *
+   * @return Active session metadata for each running stream.
+   */
+  std::vector<active_session_info_t> list_active_sessions();
+
+  /**
+   * @brief Terminate an active streaming session by launch-session ID.
+   *
+   * @param session_id Launch-session identifier for the stream to terminate.
+   */
+  void terminate_session(uint32_t session_id);
+
+  /**
+   * @brief Terminate active streaming sessions associated with a paired client UUID.
+   *
+   * @param uuid Paired client UUID.
+   */
+  void terminate_session_by_uuid(std::string_view uuid);
+
+  /**
+   * @brief Pause an active streaming session by launch-session ID.
+   *
+   * @param session_id Launch-session identifier for the stream to pause.
+   */
+  void pause_session(uint32_t session_id);
+
+  /**
+   * @brief Resume a paused streaming session by launch-session ID.
+   *
+   * @param session_id Launch-session identifier for the stream to resume.
+   */
+  void resume_session(uint32_t session_id);
+
+  /**
+   * @brief Pause active streaming sessions associated with a paired client UUID.
+   *
+   * @param uuid Paired client UUID.
+   */
+  void pause_session_by_uuid(std::string_view uuid);
+
+  /**
+   * @brief Resume paused streaming sessions associated with a paired client UUID.
+   *
+   * @param uuid Paired client UUID.
+   */
+  void resume_session_by_uuid(std::string_view uuid);
 
   /**
    * @brief Runs the RTSP server loop.
