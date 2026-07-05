@@ -6,8 +6,11 @@
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS
 
 // standard includes
+#include <array>
+#include <chrono>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <string>
 #include <utility>
 
@@ -176,6 +179,92 @@ namespace nvhttp {
 
   // Set by TLS verify callback, read by launch/resume handler (single-threaded HTTPS server)
   std::string last_verified_client_cert;  ///< Last client certificate accepted by the TLS verify callback.  // NOSONAR(cpp:S5421) - intentionally mutable global
+
+  constexpr auto PAIR_SESSION_TIMEOUT = std::chrono::minutes(5);  ///< Maximum lifetime of an in-progress pairing session.
+  constexpr std::size_t MAX_PAIR_SESSIONS = 16;  ///< Maximum concurrent pairing sessions.
+  constexpr std::size_t MAX_PAIR_SESSIONS_PER_ADDRESS = 3;  ///< Maximum pairing sessions per remote address.
+
+  /**
+   * @brief Return whether a pairing session is waiting for a PIN response.
+   *
+   * @param sess Pairing session to inspect.
+   * @return True when the session has a pending async PIN response.
+   */
+  bool pair_session_response_ready(const pair_session_t &sess) {
+    if (sess.async_insert_pin.response.has_left()) {
+      return static_cast<bool>(sess.async_insert_pin.response.left());
+    }
+    if (sess.async_insert_pin.response.has_right()) {
+      return static_cast<bool>(sess.async_insert_pin.response.right());
+    }
+    return false;
+  }
+
+  /**
+   * @brief Remove expired pairing sessions.
+   */
+  void prune_pair_sessions() {
+    const auto now = std::chrono::steady_clock::now();
+    for (auto it = map_id_sess.begin(); it != map_id_sess.end();) {
+      if (now - it->second.created_at > PAIR_SESSION_TIMEOUT) {
+        it = map_id_sess.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  /**
+   * @brief Return whether a new pairing session should be rejected for rate limiting.
+   *
+   * @param client_address Normalized remote address initiating pairing.
+   * @return True when the pairing request should be rejected.
+   */
+  bool pair_session_rate_limited(const std::string &client_address) {
+    prune_pair_sessions();
+
+    if (map_id_sess.size() >= MAX_PAIR_SESSIONS) {
+      return true;
+    }
+
+    if (client_address.empty()) {
+      return false;
+    }
+
+    std::size_t count = 0;
+    for (const auto &[_, sess] : map_id_sess) {
+      if (sess.client_address == client_address) {
+        ++count;
+      }
+    }
+
+    return count >= MAX_PAIR_SESSIONS_PER_ADDRESS;
+  }
+
+  /**
+   * @brief Redact sensitive GameStream query parameters before logging.
+   *
+   * @param name Query parameter name.
+   * @param val Query parameter value.
+   * @return Redacted or original value for logging.
+   */
+  std::string redact_query_param(const std::string_view name, const std::string_view val) {
+    static constexpr std::array<std::string_view, 5> sensitive_params {
+      "salt"sv,
+      "clientcert"sv,
+      "clientchallenge"sv,
+      "serverchallengeresp"sv,
+      "clientpairingsecret"sv,
+    };
+
+    for (const auto &sensitive : sensitive_params) {
+      if (name == sensitive) {
+        return std::string {"REDACTED"};
+      }
+    }
+
+    return std::string(val);
+  }
 
   /**
    * @brief Case-insensitive map used for HTTP headers and query parameters.
@@ -650,7 +739,7 @@ namespace nvhttp {
     BOOST_LOG(debug) << " [--] "sv;
 
     for (auto &[name, val] : request->parse_query_string()) {
-      BOOST_LOG(debug) << name << " -- " << val;
+      BOOST_LOG(debug) << name << " -- " << redact_query_param(name, val);
     }
 
     BOOST_LOG(debug) << " [--] "sv;
@@ -691,6 +780,7 @@ namespace nvhttp {
   template<class T>
   void pair(std::shared_ptr<safe::queue_t<crypto::x509_t>> &add_cert, std::shared_ptr<typename SimpleWeb::ServerBase<T>::Response> response, std::shared_ptr<typename SimpleWeb::ServerBase<T>::Request> request) {
     print_req<T>(request);
+    prune_pair_sessions();
 
     pt::ptree tree;
 
@@ -715,13 +805,23 @@ namespace nvhttp {
     args_t::const_iterator it;
     if (it = args.find("phrase"); it != std::end(args)) {
       if (it->second == "getservercert"sv) {
+        const auto client_address = net::addr_to_normalized_string(request->remote_endpoint().address());
+        prune_pair_sessions();
+        if (pair_session_rate_limited(client_address)) {
+          tree.put("root.<xmlattr>.status_code", 429);
+          tree.put("root.<xmlattr>.status_message", "Too many pairing sessions");
+          return;
+        }
+
         pair_session_t sess;
 
         sess.client.uniqueID = std::move(uniqID);
         sess.client.cert = util::from_hex_vec(get_arg(args, "clientcert"), true);
+        sess.client_address = client_address;
+        sess.created_at = std::chrono::steady_clock::now();
 
-        BOOST_LOG(debug) << sess.client.cert;
-        auto ptr = map_id_sess.emplace(sess.client.uniqueID, std::move(sess)).first;
+        BOOST_LOG(debug) << "Pairing client certificate received ("sv << sess.client.cert.size() << " bytes)"sv;
+        auto ptr = map_id_sess.insert_or_assign(sess.client.uniqueID, std::move(sess)).first;
 
         ptr->second.async_insert_pin.salt = std::move(get_arg(args, "salt"));
         if (config::sunshine.flags[config::flag::PIN_STDIN]) {
@@ -771,9 +871,45 @@ namespace nvhttp {
     }
   }
 
-  bool pin(std::string pin, std::string name) {
+  bool pin(std::string pin, std::string name, const std::string &unique_id) {
     pt::ptree tree;
+    prune_pair_sessions();
+
     if (map_id_sess.empty()) {
+      return false;
+    }
+
+    pair_session_t *target_sess = nullptr;
+
+    if (!unique_id.empty()) {
+      const auto sess_it = map_id_sess.find(unique_id);
+      if (sess_it == std::end(map_id_sess)) {
+        return false;
+      }
+      target_sess = &sess_it->second;
+    } else {
+      pair_session_t *most_recent = nullptr;
+      auto most_recent_time = std::chrono::steady_clock::time_point::min();
+
+      for (auto &[_, sess] : map_id_sess) {
+        if (!pair_session_response_ready(sess)) {
+          continue;
+        }
+
+        if (sess.created_at >= most_recent_time) {
+          most_recent_time = sess.created_at;
+          most_recent = &sess;
+        }
+      }
+
+      if (!most_recent) {
+        return false;
+      }
+
+      target_sess = most_recent;
+    }
+
+    if (!pair_session_response_ready(*target_sess)) {
       return false;
     }
 
@@ -796,15 +932,14 @@ namespace nvhttp {
       return false;
     }
 
-    auto &sess = std::begin(map_id_sess)->second;
-    getservercert(sess, tree, pin);
-    sess.client.name = name;
+    getservercert(*target_sess, tree, pin);
+    target_sess->client.name = name;
 
     // response to the request for pin
     std::ostringstream data;
     pt::write_xml(data, tree);
 
-    auto &async_response = sess.async_insert_pin.response;
+    auto &async_response = target_sess->async_insert_pin.response;
     if (async_response.has_left() && async_response.left()) {
       async_response.left()->write(data.str());
     } else if (async_response.has_right() && async_response.right()) {
@@ -1036,6 +1171,7 @@ namespace nvhttp {
 
     host_audio = util::from_view(get_arg(args, "localAudioPlayMode"));
     auto launch_session = make_launch_session(host_audio, args);
+    launch_session->expected_client_address = net::addr_to_normalized_string(request->remote_endpoint().address());
 
     if (rtsp_stream::session_count() == 0) {
       // The display should be restored in case something fails as there are no other sessions.
@@ -1151,6 +1287,7 @@ namespace nvhttp {
       host_audio = util::from_view(get_arg(args, "localAudioPlayMode"));
     }
     const auto launch_session = make_launch_session(host_audio, args);
+    launch_session->expected_client_address = net::addr_to_normalized_string(request->remote_endpoint().address());
 
     if (no_active_sessions) {
       // We want to prepare display only if there are no active sessions at
