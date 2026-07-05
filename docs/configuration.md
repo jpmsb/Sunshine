@@ -1549,7 +1549,7 @@ editing the `conf` file in a text editor. Use the examples as reference.
         <td>Description</td>
         <td colspan="2">
             Set the IP address used by the Web UI (HTTPS configuration server) only.
-            When empty, the Web UI uses @ref sunshine.bind_address "bind_address" or binds to all
+            When empty, the Web UI uses @ref bind_address "bind_address" or binds to all
             interfaces when that is also empty.
             <br><br>
             Use @code{127.0.0.1} or @code{::1} to keep the Web UI on localhost while exposing
