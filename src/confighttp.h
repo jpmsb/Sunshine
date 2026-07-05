@@ -16,12 +16,6 @@
 // local includes
 #include "thread_safe.h"
 
-/**
- * @def WEB_DIR
- * @brief Macro for WEB DIR.
- */
-#define WEB_DIR SUNSHINE_ASSETS_DIR "/web/"
-
 namespace confighttp {
   constexpr auto PORT_HTTPS = 1;  ///< GameStream port offset for port https.
 
