@@ -22,6 +22,7 @@
 #include <openssl/sha.h>
 
 // local includes
+#include "assets_path.h"
 #include "config.h"
 #include "crypto.h"
 #include "display_device.h"
@@ -44,6 +45,10 @@ namespace proc {
   namespace pt = boost::property_tree;
 
   proc_t proc;  ///< Global process registry used to track and terminate child processes.
+
+  std::string default_app_image_path() {
+    return assets_path::join("box.png");
+  }
 
   /**
    * @brief RAII helper that runs shutdown cleanup when destroyed.
@@ -530,7 +535,7 @@ namespace proc {
    */
   std::string validate_app_image_path(std::string app_image_path) {
     if (app_image_path.empty()) {
-      return DEFAULT_APP_IMAGE_PATH;
+      return default_app_image_path();
     }
 
     // get the image extension and convert it to lowercase
@@ -539,35 +544,35 @@ namespace proc {
 
     // return the default box image if the extension is not "png"
     if (image_extension != ".png") {
-      return DEFAULT_APP_IMAGE_PATH;
+      return default_app_image_path();
     }
 
     // check if image is in assets directory
-    if (auto full_image_path = std::filesystem::path(SUNSHINE_ASSETS_DIR) / app_image_path; std::filesystem::exists(full_image_path)) {
+    if (auto full_image_path = std::filesystem::path(assets_path::root()) / app_image_path; std::filesystem::exists(full_image_path)) {
       // Validate PNG signature
       if (!check_valid_png(full_image_path)) {
         BOOST_LOG(warning) << "Invalid PNG file at path ["sv << full_image_path << ']';
-        return DEFAULT_APP_IMAGE_PATH;
+        return default_app_image_path();
       }
       return full_image_path.string();
     }
 
     if (app_image_path == "./assets/steam.png") {
       // handle old default steam image definition
-      return SUNSHINE_ASSETS_DIR "/steam.png";
+      return assets_path::join("steam.png");
     }
 
     // check if specified image exists
     if (std::error_code code; !std::filesystem::exists(app_image_path, code)) {
       // return default box image if image does not exist
       BOOST_LOG(warning) << "Couldn't find app image at path ["sv << app_image_path << ']';
-      return DEFAULT_APP_IMAGE_PATH;
+      return default_app_image_path();
     }
 
     // Validate PNG signature
     if (!check_valid_png(app_image_path)) {
       BOOST_LOG(warning) << "Invalid PNG file at path ["sv << app_image_path << ']';
-      return DEFAULT_APP_IMAGE_PATH;
+      return default_app_image_path();
     }
 
     // image is a png, and not in assets directory
@@ -633,7 +638,7 @@ namespace proc {
     std::vector<std::string> to_hash;
     to_hash.push_back(app_name);
     auto file_path = validate_app_image_path(app_image_path);
-    if (file_path != DEFAULT_APP_IMAGE_PATH) {
+    if (file_path != default_app_image_path()) {
       auto file_hash = calculate_sha256(file_path);
       if (file_hash) {
         to_hash.push_back(file_hash.value());
