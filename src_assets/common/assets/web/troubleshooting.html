@@ -108,6 +108,32 @@
         </div>
       </div>
     </div>
+    <!-- Connected Clients -->
+    <div class="card my-4">
+      <div class="card-body">
+        <h2 id="connected_clients">{{ $t('troubleshooting.connected_clients_title') }}</h2>
+        <p>{{ $t('troubleshooting.connected_clients_desc') }}</p>
+      </div>
+      <ul class="list-group list-group-flush" v-if="connectedSessions && connectedSessions.length > 0">
+        <li v-for="session in connectedSessions" :key="session.session_id" class="list-group-item d-flex align-items-center">
+          <div class="flex-grow-1">
+            {{ session.label }}
+            <span v-if="session.paused" class="badge bg-warning text-dark ms-2">{{ $t('troubleshooting.connected_clients_paused') }}</span>
+          </div>
+          <button class="btn btn-warning btn-sm ms-2" @click="toggleSessionPause(session)">
+            {{ session.paused ? $t('troubleshooting.connected_clients_resume') : $t('troubleshooting.connected_clients_pause') }}
+          </button>
+          <button class="btn btn-danger btn-sm ms-2" @click="disconnectSession(session.session_id)">
+            {{ $t('troubleshooting.connected_clients_disconnect') }}
+          </button>
+        </li>
+      </ul>
+      <ul v-else class="list-group list-group-flush">
+        <li class="list-group-item p-3 text-center">
+          <em>{{ $t('troubleshooting.connected_clients_none') }}</em>
+        </li>
+      </ul>
+    </div>
     <!-- Unpair Clients -->
     <div class="card my-4">
       <div class="card-body">
@@ -243,6 +269,7 @@
       data() {
         return {
           clients: [],
+          connectedSessions: [],
           closeAppPressed: false,
           closeAppStatus: null,
           ddResetPressed: false,
@@ -251,6 +278,7 @@
           logs: 'Loading...',
           logFilter: null,
           logInterval: null,
+          sessionsInterval: null,
           restartPressed: false,
           showApplyMessage: false,
           platform: "",
@@ -404,11 +432,16 @@
         this.logInterval = setInterval(() => {
           this.refreshLogs();
         }, 5000);
+        this.sessionsInterval = setInterval(() => {
+          this.refreshConnectedSessions();
+        }, 3000);
         this.refreshLogs();
         this.refreshClients();
+        this.refreshConnectedSessions();
       },
       beforeDestroy() {
         clearInterval(this.logInterval);
+        clearInterval(this.sessionsInterval);
       },
       methods: {
         refreshLogs() {
@@ -488,6 +521,42 @@
                 this.clients = [];
               }
             });
+        },
+        refreshConnectedSessions() {
+          fetch("./api/clients/sessions")
+            .then((response) => response.json())
+            .then((response) => {
+              if (response.status === true && response.sessions) {
+                this.connectedSessions = response.sessions.sort((a, b) => {
+                  return a.label.toLowerCase() > b.label.toLowerCase() ? 1 : -1;
+                });
+              } else {
+                this.connectedSessions = [];
+              }
+            });
+        },
+        toggleSessionPause(session) {
+          const endpoint = session.paused ? "./api/clients/resume" : "./api/clients/pause";
+          apiFetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ session_id: session.session_id })
+          }).then(() => {
+            this.refreshConnectedSessions();
+          });
+        },
+        disconnectSession(sessionId) {
+          apiFetch("./api/clients/disconnect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ session_id: sessionId })
+          }).then(() => {
+            this.refreshConnectedSessions();
+          });
         },
         clickedApplyBanner() {
           this.showApplyMessage = false;
