@@ -20,6 +20,7 @@
 #include <boost/property_tree/ptree.hpp>
 
 // local includes
+#include "assets_path.h"
 #include "config.h"
 #include "entry_handler.h"
 #include "file_handler.h"
@@ -1645,7 +1646,7 @@ namespace config {
 #ifndef __ANDROID__
     // TODO: Android can possibly support this
     if (!fs::exists(stream.file_apps.c_str())) {
-      fs::copy_file(SUNSHINE_ASSETS_DIR "/apps.json", stream.file_apps);
+      fs::copy_file(assets_path::join("apps.json"), stream.file_apps);
       fs::permissions(
         stream.file_apps,
         fs::perms::owner_read | fs::perms::owner_write,
