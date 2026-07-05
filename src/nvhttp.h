@@ -235,6 +235,22 @@ namespace nvhttp {
   std::string get_cert_by_uuid(std::string_view uuid);
 
   /**
+   * @brief Paired client metadata resolved from a certificate.
+   */
+  struct client_metadata_t {
+    std::string uuid;  ///< Paired client UUID, when known.
+    std::string name;  ///< Paired client name, when known.
+  };
+
+  /**
+   * @brief Resolve paired client metadata from a PEM certificate.
+   *
+   * @param cert_pem PEM-encoded client certificate to look up.
+   * @return UUID and name for the paired client, or empty strings when unknown.
+   */
+  client_metadata_t get_client_metadata_by_cert(std::string_view cert_pem);
+
+  /**
    * @brief Get all paired clients.
    * @return The list of all paired clients.
    * @examples
