@@ -19,6 +19,7 @@
   #include <atomic>
   #include <csignal>
   #include <deque>
+  #include <filesystem>
   #include <format>
   #include <memory>
   #include <mutex>
@@ -217,6 +218,25 @@ namespace system_tray {
   }
 
   /**
+   * @brief Resolve the first existing tray icon path from a candidate list.
+   *
+   * @param web Web assets root directory.
+   * @param candidates Relative icon paths to try in order.
+   * @param fallback Relative path used when no candidate exists.
+   * @return Absolute path to the selected icon.
+   */
+  static std::string pick_tray_icon_path(const std::string &web, std::initializer_list<const char *> candidates, const char *fallback) {
+    for (const char *candidate : candidates) {
+      const auto path = web + candidate;
+      if (std::filesystem::exists(path)) {
+        return path;
+      }
+    }
+
+    return web + fallback;
+  }
+
+  /**
    * @brief Resolve tray icon paths from the runtime Web UI assets directory.
    */
   void configure_tray_icon_paths() {
@@ -232,10 +252,10 @@ namespace system_tray {
     tray_icon_pausing = web + "images/sunshine-pausing-16.png";
     tray_icon_locked = web + "images/sunshine-locked-16.png";
   #else
-    tray_icon_default = web + "images/logo-sunshine.svg";
-    tray_icon_playing = web + "images/sunshine-playing.svg";
-    tray_icon_pausing = web + "images/sunshine-pausing.svg";
-    tray_icon_locked = web + "images/sunshine-locked.svg";
+    tray_icon_default = pick_tray_icon_path(web, {"images/logo-sunshine.svg", "images/sunshine-playing.svg", "images/logo-sunshine-45.png"}, "images/sunshine-playing.svg");
+    tray_icon_playing = pick_tray_icon_path(web, {"images/sunshine-playing.svg", "images/sunshine-playing-45.png"}, "images/sunshine-playing.svg");
+    tray_icon_pausing = pick_tray_icon_path(web, {"images/sunshine-pausing.svg", "images/sunshine-pausing-45.png"}, "images/sunshine-pausing.svg");
+    tray_icon_locked = pick_tray_icon_path(web, {"images/sunshine-locked.svg", "images/sunshine-locked-45.png"}, "images/sunshine-locked.svg");
   #endif
 
     tray.allIconPaths[0] = tray_icon_default.c_str();
@@ -307,16 +327,23 @@ namespace system_tray {
         tray_session_submenus.emplace_back();
 
         auto &submenu = tray_session_submenus.back();
-        if (session.paused) {
-          tray_menu_strings.emplace_back("Resume");
-          add_tray_session_action(submenu, tray_menu_strings.back().c_str(), session.session_id, tray_session_action_t::type_e::resume);
-        } else {
-          tray_menu_strings.emplace_back("Pause");
-          add_tray_session_action(submenu, tray_menu_strings.back().c_str(), session.session_id, tray_session_action_t::type_e::pause);
-        }
-
+        tray_menu_strings.emplace_back(session.paused ? "Resume" : "Pause");
+        const auto action_label_index = tray_menu_strings.size() - 1;
         tray_menu_strings.emplace_back("Disconnect");
-        add_tray_session_action(submenu, tray_menu_strings.back().c_str(), session.session_id, tray_session_action_t::type_e::disconnect);
+        const auto disconnect_label_index = tray_menu_strings.size() - 1;
+
+        add_tray_session_action(
+          submenu,
+          tray_menu_strings[action_label_index].c_str(),
+          session.session_id,
+          session.paused ? tray_session_action_t::type_e::resume : tray_session_action_t::type_e::pause
+        );
+        add_tray_session_action(
+          submenu,
+          tray_menu_strings[disconnect_label_index].c_str(),
+          session.session_id,
+          tray_session_action_t::type_e::disconnect
+        );
         submenu.push_back({.text = nullptr});
 
         tray_connected_clients_submenu.push_back({
