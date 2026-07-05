@@ -2,5 +2,53 @@
 <meta charset="UTF-8" />
 <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="dark light" />
 <title>Sunshine</title>
 <link rel="icon" type="image/x-icon" href="./images/sunshine.ico">
+<style id="theme-preload">
+  html[data-bs-theme="dark"] {
+    background-color: #212529;
+    color: #f8f9fa;
+  }
+
+  html[data-bs-theme="light"] {
+    background-color: #ffffff;
+    color: #212529;
+  }
+
+  html:not(.theme-ready) body {
+    transition: none !important;
+  }
+</style>
+<script>
+  (function () {
+    'use strict'
+
+    var darkThemes = {
+      dark: 1,
+      dracula: 1,
+      ember: 1,
+      midnight: 1,
+      mocha: 1,
+      moonlight: 1,
+      nord: 1,
+      'rose-pine': 1,
+      slate: 1
+    }
+
+    var storedTheme = localStorage.getItem('theme')
+    var theme = storedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    if (theme === 'auto') {
+      theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    }
+    var bsTheme = darkThemes[theme] ? 'dark' : 'light'
+    var root = document.documentElement
+
+    root.dataset.theme = theme
+    root.dataset.bsTheme = bsTheme
+
+    window.addEventListener('DOMContentLoaded', function () {
+      root.classList.add('theme-ready')
+    })
+  })()
+</script>
