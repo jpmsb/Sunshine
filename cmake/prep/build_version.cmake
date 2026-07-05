@@ -27,48 +27,26 @@ if((DEFINED ENV{BRANCH}) AND (DEFINED ENV{BUILD_VERSION}))  # cmake-lint: disabl
         set(CMAKE_PROJECT_VERSION ${PROJECT_VERSION})  # cpack will use this to set the binary versions
     endif()
 else()
-    # Generate Sunshine Version based of the git tag
-    # https://github.com/nocnokneo/cmake-git-versioning-example/blob/master/LICENSE
+    # Local builds use AAAAMMDDHHmmss-jpmsb based on the configure timestamp.
+    string(TIMESTAMP BUILD_TIMESTAMP "%Y%m%d%H%M%S")
+    set(PROJECT_VERSION "${BUILD_TIMESTAMP}-jpmsb")
+    set(CMAKE_PROJECT_VERSION ${PROJECT_VERSION})
+
     find_package(Git)
     if(GIT_EXECUTABLE)
-        MESSAGE("${CMAKE_SOURCE_DIR}")
-        get_filename_component(SRC_DIR "${CMAKE_SOURCE_DIR}" DIRECTORY)
-        #Get current Branch
-        execute_process(
-                COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
-                OUTPUT_VARIABLE GIT_DESCRIBE_BRANCH
-                RESULT_VARIABLE GIT_DESCRIBE_ERROR_CODE
-                OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
-        # Gather current commit
-        execute_process(
-                COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
-                OUTPUT_VARIABLE GIT_DESCRIBE_VERSION
-                RESULT_VARIABLE GIT_DESCRIBE_ERROR_CODE
-                OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
-        # Check if Dirty
         execute_process(
                 COMMAND ${GIT_EXECUTABLE} diff --quiet --exit-code
                 RESULT_VARIABLE GIT_IS_DIRTY
                 OUTPUT_STRIP_TRAILING_WHITESPACE
         )
-        if(NOT GIT_DESCRIBE_ERROR_CODE)
-            MESSAGE("Sunshine Branch: ${GIT_DESCRIBE_BRANCH}")
-            if(NOT GIT_DESCRIBE_BRANCH STREQUAL "master")
-                set(PROJECT_VERSION ${PROJECT_VERSION}-${GIT_DESCRIBE_VERSION})
-                MESSAGE("Sunshine Version: ${GIT_DESCRIBE_VERSION}")
-            endif()
-            if(GIT_IS_DIRTY)
-                set(PROJECT_VERSION ${PROJECT_VERSION}-dirty)
-                MESSAGE("Git tree is dirty!")
-            endif()
-        else()
-            MESSAGE(ERROR ": Got git error while fetching tags: ${GIT_DESCRIBE_ERROR_CODE}")
+        if(GIT_IS_DIRTY)
+            set(PROJECT_VERSION "${PROJECT_VERSION}-dirty")
+            set(CMAKE_PROJECT_VERSION ${PROJECT_VERSION})
+            MESSAGE("Git tree is dirty!")
         endif()
-    else()
-        MESSAGE(WARNING ": Git not found, cannot find git version")
     endif()
+
+    MESSAGE("Sunshine local build version: ${PROJECT_VERSION}")
 endif()
 
 # set date variables
@@ -108,6 +86,26 @@ if(PROJECT_VERSION MATCHES "^([0-9][0-9][0-9][0-9])\\.([0-9][0-9][0-9][0-9]?)\\.
     endif()
 endif()
 
+# jpmsb timestamp format: AAAAMMDDHHmmss-jpmsb
+set(VERSION_STAMP "${PROJECT_VERSION}")
+string(REGEX REPLACE "-dirty$" "" VERSION_STAMP "${VERSION_STAMP}")
+
+if(VERSION_STAMP MATCHES "^([0-9][0-9][0-9][0-9])([0-9][0-9])([0-9][0-9])([0-9][0-9])([0-9][0-9])([0-9][0-9])-jpmsb$")
+    message("Extracting components from jpmsb PROJECT_VERSION: ${PROJECT_VERSION}")
+    set(PROJECT_YEAR "${CMAKE_MATCH_1}")
+    set(PROJECT_MONTH "${CMAKE_MATCH_2}")
+    set(PROJECT_DAY "${CMAKE_MATCH_3}")
+    set(PROJECT_VERSION_MAJOR "${CMAKE_MATCH_1}")
+    set(CMAKE_PROJECT_VERSION_MAJOR "${CMAKE_MATCH_1}")
+    set(PROJECT_VERSION_MINOR "${CMAKE_MATCH_2}${CMAKE_MATCH_3}")
+    set(CMAKE_PROJECT_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+    math(EXPR VERSION_HH "${CMAKE_MATCH_4}")
+    math(EXPR VERSION_MM "${CMAKE_MATCH_5}")
+    math(EXPR VERSION_SS "${CMAKE_MATCH_6}")
+    math(EXPR PROJECT_VERSION_PATCH "${VERSION_HH} * 10000 + ${VERSION_MM} * 100 + ${VERSION_SS}")
+    set(CMAKE_PROJECT_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
+endif()
+
 # Parse PROJECT_VERSION to extract major, minor, and patch components
 if(PROJECT_VERSION MATCHES "([0-9]+)\\.([0-9]+)\\.([0-9]+)")
     set(PROJECT_VERSION_MAJOR "${CMAKE_MATCH_1}")
@@ -124,6 +122,9 @@ endif()
 # PROJECT_VERSION_PATCH can be 0-245959, so we split it into two parts:
 # - Last 2 digits for RC_VERSION_REVISION
 # - Leading digits for RC_VERSION_BUILD (0 if original is <= 99)
+if(NOT DEFINED PROJECT_VERSION_PATCH)
+    set(PROJECT_VERSION_PATCH 0)
+endif()
 math(EXPR RC_VERSION_BUILD "${PROJECT_VERSION_PATCH} / 100")
 math(EXPR RC_VERSION_REVISION "${PROJECT_VERSION_PATCH} % 100")
 
