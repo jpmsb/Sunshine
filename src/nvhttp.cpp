@@ -1599,6 +1599,16 @@ namespace nvhttp {
     return {};
   }
 
+  client_metadata_t get_client_metadata_by_cert(const std::string_view cert_pem) {
+    for (const auto &named_cert : client_root.named_devices) {
+      if (named_cert.cert == cert_pem) {
+        return {named_cert.uuid, named_cert.name};
+      }
+    }
+
+    return {};
+  }
+
   /**
    * @brief Check whether a paired client certificate is allowed to connect.
    */
