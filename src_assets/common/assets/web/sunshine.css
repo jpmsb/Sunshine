@@ -43,6 +43,39 @@
     --color-on-danger: #fff;
     --color-on-info: #fff;
     --color-on-warning: #1a1a1a;
+
+    /* Light theme fallbacks before data-theme is applied */
+    --color-primary: #0d6efd;
+    --color-primary-hover: #0b5ed7;
+    --color-primary-light: #cfe2ff;
+    --color-accent: #fd7e14;
+    --color-accent-hover: #e76c0c;
+    --color-accent-light: #ffe5d0;
+    --color-success: #198754;
+    --color-success-hover: #157347;
+    --color-success-light: #d1e7dd;
+    --color-danger: #dc3545;
+    --color-danger-hover: #bb2d3b;
+    --color-danger-light: #f8d7da;
+    --color-warning: #ffc107;
+    --color-warning-hover: #ffca2c;
+    --color-warning-light: #fff3cd;
+    --color-info: #0dcaf0;
+    --color-info-hover: #31d2f2;
+    --color-info-light: #cff4fc;
+    --color-bg-base: #ffffff;
+    --color-bg-subtle: #f8f9fa;
+    --color-bg-muted: #e9ecef;
+    --color-surface: #ffffff;
+    --color-surface-raised: #ffffff;
+    --color-border: #dee2e6;
+    --color-border-strong: #adb5bd;
+    --color-text-base: #212529;
+    --color-text-muted: #6c757d;
+    --color-text-subtle: #adb5bd;
+    --navbar-bg: linear-gradient(135deg, #ffc400 0%, #ff9d00 100%);
+    --navbar-text: #594400;
+    --navbar-text-muted: #7f6100;
 }
 
 /* ==========================================================================
@@ -973,6 +1006,10 @@ body {
     color: var(--color-text-base) !important;
     transition: background-color var(--transition-slow), color var(--transition-slow);
     min-height: 100vh;
+}
+
+html:not(.theme-ready) body {
+    transition: none;
 }
 
 /* Ensure containers inherit theme background */
