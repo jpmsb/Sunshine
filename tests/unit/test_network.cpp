@@ -33,16 +33,19 @@ INSTANTIATE_TEST_SUITE_P(
 class BindAddressTest: public BaseTest {
 protected:
   std::string original_bind_address;
+  std::string original_web_ui_bind_address;
 
   void SetUp() override {
     BaseTest::SetUp();
     // Save the original bind_address config
     original_bind_address = config::sunshine.bind_address;
+    original_web_ui_bind_address = config::sunshine.web_ui_bind_address;
   }
 
   void TearDown() override {
     // Restore the original bind_address config
     config::sunshine.bind_address = original_bind_address;
+    config::sunshine.web_ui_bind_address = original_web_ui_bind_address;
     BaseTest::TearDown();
   }
 };
@@ -139,4 +142,29 @@ TEST_F(BindAddressTest, LinkLocalAddresses) {
 TEST_F(BindAddressTest, WildcardAddressFunction) {
   ASSERT_EQ(net::af_to_any_address_string(net::af_e::IPV4), "0.0.0.0");
   ASSERT_EQ(net::af_to_any_address_string(net::af_e::BOTH), "::");
+}
+
+/**
+ * @brief Test that get_web_ui_bind_address falls back to get_bind_address when not configured
+ */
+TEST_F(BindAddressTest, WebUiBindAddressFallback) {
+  config::sunshine.bind_address = "192.168.1.50";
+  config::sunshine.web_ui_bind_address = "";
+
+  const auto web_ui_bind_addr = net::get_web_ui_bind_address(net::af_e::IPV4);
+  ASSERT_EQ(web_ui_bind_addr, "192.168.1.50");
+}
+
+/**
+ * @brief Test that get_web_ui_bind_address overrides the general bind address
+ */
+TEST_F(BindAddressTest, WebUiBindAddressOverride) {
+  config::sunshine.bind_address = "";
+  config::sunshine.web_ui_bind_address = "127.0.0.1";
+
+  const auto bind_addr = net::get_bind_address(net::af_e::IPV4);
+  const auto web_ui_bind_addr = net::get_web_ui_bind_address(net::af_e::IPV4);
+
+  ASSERT_EQ(bind_addr, "0.0.0.0");
+  ASSERT_EQ(web_ui_bind_addr, "127.0.0.1");
 }
