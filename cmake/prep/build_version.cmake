@@ -27,24 +27,10 @@ if((DEFINED ENV{BRANCH}) AND (DEFINED ENV{BUILD_VERSION}))  # cmake-lint: disabl
         set(CMAKE_PROJECT_VERSION ${PROJECT_VERSION})  # cpack will use this to set the binary versions
     endif()
 else()
-    # Local builds use AAAAMMDDHHmmss-jpmsb based on the configure timestamp.
+    # Local builds use AAAAMMDDHHmmss-jpmsb-local based on the configure timestamp.
     string(TIMESTAMP BUILD_TIMESTAMP "%Y%m%d%H%M%S")
-    set(PROJECT_VERSION "${BUILD_TIMESTAMP}-jpmsb")
+    set(PROJECT_VERSION "${BUILD_TIMESTAMP}-jpmsb-local")
     set(CMAKE_PROJECT_VERSION ${PROJECT_VERSION})
-
-    find_package(Git)
-    if(GIT_EXECUTABLE)
-        execute_process(
-                COMMAND ${GIT_EXECUTABLE} diff --quiet --exit-code
-                RESULT_VARIABLE GIT_IS_DIRTY
-                OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
-        if(GIT_IS_DIRTY)
-            set(PROJECT_VERSION "${PROJECT_VERSION}-dirty")
-            set(CMAKE_PROJECT_VERSION ${PROJECT_VERSION})
-            MESSAGE("Git tree is dirty!")
-        endif()
-    endif()
 
     MESSAGE("Sunshine local build version: ${PROJECT_VERSION}")
 endif()
@@ -86,9 +72,9 @@ if(PROJECT_VERSION MATCHES "^([0-9][0-9][0-9][0-9])\\.([0-9][0-9][0-9][0-9]?)\\.
     endif()
 endif()
 
-# jpmsb timestamp format: AAAAMMDDHHmmss-jpmsb
+# jpmsb timestamp format: AAAAMMDDHHmmss-jpmsb-local
 set(VERSION_STAMP "${PROJECT_VERSION}")
-string(REGEX REPLACE "-dirty$" "" VERSION_STAMP "${VERSION_STAMP}")
+string(REGEX REPLACE "-local$" "" VERSION_STAMP "${VERSION_STAMP}")
 
 if(VERSION_STAMP MATCHES "^([0-9][0-9][0-9][0-9])([0-9][0-9])([0-9][0-9])([0-9][0-9])([0-9][0-9])([0-9][0-9])-jpmsb$")
     message("Extracting components from jpmsb PROJECT_VERSION: ${PROJECT_VERSION}")
