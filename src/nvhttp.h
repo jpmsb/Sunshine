@@ -6,6 +6,7 @@
 #pragma once
 
 // standard includes
+#include <chrono>
 #include <string>
 
 // lib includes
@@ -120,6 +121,9 @@ namespace nvhttp {
      * @brief used as a security measure to prevent out of order calls
      */
     PAIR_PHASE last_phase = PAIR_PHASE::NONE;
+
+    std::chrono::steady_clock::time_point created_at = std::chrono::steady_clock::now();  ///< Time this pairing session was created.
+    std::string client_address = {};  ///< Normalized remote address that initiated pairing.
   };
 
   /**
@@ -196,12 +200,13 @@ namespace nvhttp {
    * @brief Compare the user supplied pin to the Moonlight pin.
    * @param pin The user supplied pin.
    * @param name The user supplied name.
+   * @param unique_id Optional Moonlight client unique ID for the pending pairing session.
    * @return `true` if the pin is correct, `false` otherwise.
    * @examples
    * bool pin_status = nvhttp::pin("1234", "laptop");
    * @examples_end
    */
-  bool pin(std::string pin, std::string name);
+  bool pin(std::string pin, std::string name, const std::string &unique_id = {});
 
   /**
    * @brief Remove single client.
