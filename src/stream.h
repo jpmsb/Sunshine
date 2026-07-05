@@ -15,6 +15,10 @@
 #include "crypto.h"
 #include "video.h"
 
+namespace rtsp_stream {
+  struct launch_session_t;
+}
+
 namespace stream {
   constexpr auto VIDEO_STREAM_PORT = 9;  ///< GameStream base-port offset used for the video UDP stream.
   constexpr auto CONTROL_PORT = 10;  ///< GameStream base-port offset used for the control channel.
@@ -81,6 +85,13 @@ namespace stream {
      */
     void join(session_t &session);
     /**
+     * @brief Return the number of sessions that have started but not yet joined.
+     *
+     * @return Count of active stream worker groups.
+     */
+    uint32_t running_count();
+
+    /**
      * @brief Platform handle returned from stream setup.
      *
      * @param session Active streaming or pairing session for the request.
@@ -94,5 +105,56 @@ namespace stream {
      * @return PEM certificate associated with the session's client.
      */
     const std::string &client_cert(session_t &session);
+    /**
+     * @brief Return the RTSP launch-session identifier for a stream session.
+     *
+     * @param session Active streaming or pairing session for the request.
+     * @return Launch-session identifier assigned when the stream was created.
+     */
+    uint32_t launch_session_id(session_t &session);
+    /**
+     * @brief Check whether a stream session is paused.
+     *
+     * @param session Active streaming or pairing session for the request.
+     * @return True when the session is paused.
+     */
+    bool paused(session_t &session);
+    /**
+     * @brief Set the paused state for a stream session.
+     *
+     * @param session Active streaming or pairing session for the request.
+     * @param value True to pause the session, false to resume.
+     */
+    void set_paused(session_t &session, bool value);
+    /**
+     * @brief Check whether a stream session is paused using opaque channel data.
+     *
+     * @param channel_data Opaque pointer to the owning stream session.
+     * @return True when the session is paused.
+     */
+    bool is_paused(void *channel_data);
+    /**
+     * @brief Return the control-channel peer endpoint for a stream session.
+     *
+     * @param session Active streaming or pairing session for the request.
+     * @return Pair of normalized IP address and port for the control peer.
+     */
+    std::pair<std::string, uint16_t> peer_endpoint(session_t &session);
+    /**
+     * @brief Check whether the control channel is connected for a stream session.
+     *
+     * @param session Active streaming or pairing session for the request.
+     * @return True when the control peer is connected and the session is running.
+     */
+    bool is_connected(session_t &session);
+    /**
+     * @brief Build a display label for a connected client.
+     *
+     * @param address Normalized client IP address.
+     * @param port Client control port.
+     * @param name Optional paired client name.
+     * @return Label formatted as `IP:port - name` or `IP:port` when name is empty.
+     */
+    std::string format_session_label(const std::string &address, uint16_t port, const std::string &name);
   }  // namespace session
 }  // namespace stream
