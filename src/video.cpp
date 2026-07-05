@@ -28,6 +28,7 @@ extern "C" {
 #include "logging.h"
 #include "nvenc/nvenc_base.h"
 #include "platform/common.h"
+#include "stream.h"
 #include "sync.h"
 #include "video.h"
 
@@ -2404,8 +2405,10 @@ namespace video {
 
       std::optional<std::chrono::steady_clock::time_point> frame_timestamp;
 
+      const bool session_paused = stream::session::is_paused(channel_data);
+
       // Encode at a minimum FPS to avoid image quality issues with static content
-      if (!requested_idr_frame || images->peek()) {
+      if (!session_paused && (!requested_idr_frame || images->peek())) {
         if (auto img = images->pop(max_frametime)) {
           frame_timestamp = img->frame_timestamp;
           if (session->convert(*img)) {
@@ -2415,6 +2418,9 @@ namespace video {
         } else if (!images->running()) {
           break;
         }
+      } else if (session_paused) {
+        std::this_thread::sleep_for(max_frametime);
+        continue;
       }
 
       // Break out of the encoding loop if any of the following are true:
@@ -2710,6 +2716,13 @@ namespace video {
           if (ctx->idr_events->peek()) {
             pos->session->request_idr_frame();
             ctx->idr_events->pop();
+          }
+
+          const bool session_paused = stream::session::is_paused(ctx->channel_data);
+
+          if (session_paused) {
+            ++pos;
+            continue;
           }
 
           if (frame_captured && pos->session->convert(*img)) {
