@@ -6,6 +6,7 @@
 #include <array>
 #include <atomic>
 #include <bitset>
+#include <chrono>
 #include <list>
 #include <thread>
 
@@ -2419,6 +2420,10 @@ namespace video {
           break;
         }
       } else if (session_paused) {
+        if (shutdown_event->peek() || !images->running()) {
+          break;
+        }
+
         std::this_thread::sleep_for(max_frametime);
         continue;
       }
