@@ -55,6 +55,18 @@ curl -u user:pass -H "X-CSRF-Token: your_token_here" \
 ## GET /api/clients/list
 @copydoc confighttp::getClients()
 
+## GET /api/clients/sessions
+@copydoc confighttp::getClientSessions()
+
+## POST /api/clients/disconnect
+@copydoc confighttp::disconnectClient()
+
+## POST /api/clients/pause
+@copydoc confighttp::pauseClient()
+
+## POST /api/clients/resume
+@copydoc confighttp::resumeClient()
+
 ## POST /api/clients/unpair
 @copydoc confighttp::unpair()
 
