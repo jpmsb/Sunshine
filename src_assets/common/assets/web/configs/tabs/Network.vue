@@ -44,6 +44,13 @@ const effectivePort = computed(() => +config.value?.port ?? defaultMoonlightPort
       <div class="form-text">{{ $t('config.bind_address_desc') }}</div>
     </div>
 
+    <!-- Web UI Bind Address -->
+    <div class="mb-3">
+      <label for="web_ui_bind_address" class="form-label">{{ $t('config.web_ui_bind_address') }}</label>
+      <input type="text" class="form-control" id="web_ui_bind_address" v-model="config.web_ui_bind_address" />
+      <div class="form-text">{{ $t('config.web_ui_bind_address_desc') }}</div>
+    </div>
+
     <!-- Port family -->
     <div class="mb-3">
       <label for="port" class="form-label">{{ $t('config.port') }}</label>
