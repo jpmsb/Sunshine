@@ -25,6 +25,27 @@ TEST(SessionManagementTest, FormatSessionLabelWithoutName) {
   );
 }
 
+TEST(SessionManagementTest, FormatClientNotificationBodyWithName) {
+  EXPECT_EQ(
+    stream::session::format_client_notification_body("192.168.1.10", 47998, "Phone"),
+    "Nome: Phone\nIP: 192.168.1.10\nPorta: 47998"
+  );
+}
+
+TEST(SessionManagementTest, FormatClientNotificationBodyWithoutName) {
+  EXPECT_EQ(
+    stream::session::format_client_notification_body("192.168.1.10", 47998, ""),
+    "IP: 192.168.1.10\nPorta: 47998"
+  );
+}
+
+TEST(SessionManagementTest, FormatClientNotificationBodyZeroPort) {
+  EXPECT_EQ(
+    stream::session::format_client_notification_body("192.168.1.10", 0, ""),
+    "IP: 192.168.1.10\nPorta: 0"
+  );
+}
+
 TEST(SessionManagementTest, GetClientMetadataByCertUnknown) {
   const auto metadata = nvhttp::get_client_metadata_by_cert("unknown-cert");
   EXPECT_TRUE(metadata.uuid.empty());
