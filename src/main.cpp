@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <thread>
 
 #ifdef __APPLE__
   #include <mach-o/dyld.h>
@@ -17,6 +18,7 @@
 #include <rs.h>
 
 // local includes
+#include "assets_path.h"
 #include "confighttp.h"
 #include "display_device.h"
 #include "entry_handler.h"
@@ -150,7 +152,12 @@ void mainThreadLoop(const std::shared_ptr<safe::event_t<bool>> &shutdown_event) 
   // Main thread event loop
   BOOST_LOG(info) << "Starting main loop"sv;
 #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
-  while (system_tray::process_tray_events() == 0);
+  while (!shutdown_event->peek()) {
+    if (system_tray::process_tray_events() != 0) {
+      break;
+    }
+    std::this_thread::sleep_for(16ms);
+  }
 #endif
   BOOST_LOG(info) << "Main loop has exited"sv;
 }
@@ -216,6 +223,8 @@ int main(int argc, char *argv[]) {
   // if anything is logged prior to this point, it will appear in stdout, but not in the log viewer in the UI
   // the version should be printed to the log before anything else
   BOOST_LOG(info) << PROJECT_NAME << " version: " << PROJECT_VERSION << " commit: " << PROJECT_VERSION_COMMIT;
+
+  assets_path::init();
 
   if (config::sunshine.flags[config::flag::PIN_STDIN]) {
     BOOST_LOG(warning)
@@ -443,18 +452,6 @@ int main(int argc, char *argv[]) {
     return lifetime::desired_exit_code;
   }
 
-  std::thread httpThread {nvhttp::start};
-  std::thread configThread {confighttp::start};
-  std::thread rtspThread {rtsp_stream::start};
-
-#ifdef _WIN32
-  // If we're using the default port and GameStream is enabled, warn the user
-  if (config::sunshine.port == 47989 && is_gamestream_enabled()) {
-    BOOST_LOG(fatal) << "GameStream is still enabled in GeForce Experience! This *will* cause streaming problems with Sunshine!"sv;
-    BOOST_LOG(fatal) << "Disable GameStream on the SHIELD tab in GeForce Experience or change the Port setting on the Advanced tab in the Sunshine Web UI."sv;
-  }
-#endif
-
   if (tray_is_enabled && config::sunshine.system_tray) {
     BOOST_LOG(info) << "Starting system tray"sv;
 #ifdef _WIN32
@@ -468,6 +465,18 @@ int main(int argc, char *argv[]) {
     system_tray::init_tray();
 #endif
   }
+
+  std::thread httpThread {nvhttp::start};
+  std::thread configThread {confighttp::start};
+  std::thread rtspThread {rtsp_stream::start};
+
+#ifdef _WIN32
+  // If we're using the default port and GameStream is enabled, warn the user
+  if (config::sunshine.port == 47989 && is_gamestream_enabled()) {
+    BOOST_LOG(fatal) << "GameStream is still enabled in GeForce Experience! This *will* cause streaming problems with Sunshine!"sv;
+    BOOST_LOG(fatal) << "Disable GameStream on the SHIELD tab in GeForce Experience or change the Port setting on the Advanced tab in the Sunshine Web UI."sv;
+  }
+#endif
 
   mainThreadLoop(shutdown_event);
 
