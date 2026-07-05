@@ -4,7 +4,8 @@
  */
 
 // standard includes
-#include <fstream>
+#include <chrono>
+#include <format>
 #include <future>
 #include <queue>
 
@@ -26,6 +27,7 @@ extern "C" {
 #include "input.h"
 #include "logging.h"
 #include "network.h"
+#include "nvhttp.h"
 #include "platform/common.h"
 #include "process.h"
 #include "stream.h"
@@ -541,6 +543,7 @@ namespace stream {
     safe::signal_t controlEnd;  ///< Signal raised when the control channel exits.
 
     std::atomic<session::state_e> state;  ///< Current lifecycle state observed by stream workers.
+    std::atomic<bool> paused {false};  ///< Whether video, audio, and input are paused for this session.
   };
 
   /**
@@ -734,14 +737,24 @@ namespace stream {
           }
           break;
         case ENET_EVENT_TYPE_CONNECT:
-          BOOST_LOG(info) << "CLIENT CONNECTED"sv;
+          {
+            const auto endpoint = session::peer_endpoint(*session);
+            const auto metadata = nvhttp::get_client_metadata_by_cert(session->client_cert);
+            const auto label = session::format_session_label(endpoint.first, endpoint.second, metadata.name);
+            BOOST_LOG(info) << "CLIENT CONNECTED: "sv << label;
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+            system_tray::notify_client_connected(label);
+#endif
+          }
           break;
         case ENET_EVENT_TYPE_DISCONNECT:
           BOOST_LOG(info) << "CLIENT DISCONNECTED"sv;
-          // No more clients to send video data to ^_^
-          if (session->state == session::state_e::RUNNING) {
+          if (session->state.load(std::memory_order_acquire) == session::state_e::RUNNING) {
             session::stop(*session);
           }
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+          system_tray::refresh_connected_clients_menu();
+#endif
           break;
         case ENET_EVENT_TYPE_NONE:
           break;
@@ -1167,6 +1180,10 @@ namespace stream {
     server->map(packetTypes[IDX_INPUT_DATA], [&](session_t *session, const std::string_view &payload) {
       BOOST_LOG(debug) << "type [IDX_INPUT_DATA]"sv;
 
+      if (session->paused.load(std::memory_order_relaxed)) {
+        return;
+      }
+
       if (payload.size() < sizeof(int32_t)) {
         BOOST_LOG(warning) << "type [IDX_INPUT_DATA]: payload too short ("sv << payload.size() << " bytes)"sv;
         return;
@@ -1259,6 +1276,10 @@ namespace stream {
 
       // IDX_INPUT_DATA callback will attempt to decrypt unencrypted data, therefore we need pass it directly
       if (type == packetTypes[IDX_INPUT_DATA]) {
+        if (session->paused.load(std::memory_order_relaxed)) {
+          return;
+        }
+
         plaintext.erase(std::begin(plaintext), std::begin(plaintext) + 4);
         input::passthrough(session->input, std::move(plaintext));
       } else {
@@ -2162,6 +2183,69 @@ namespace stream {
     }
 
     /**
+     * @brief Return the RTSP launch-session identifier for this session.
+     */
+    uint32_t launch_session_id(session_t &session) {
+      return session.launch_session_id;
+    }
+
+    /**
+     * @brief Check whether a stream session is paused.
+     */
+    bool paused(session_t &session) {
+      return session.paused.load(std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Set the paused state for a stream session.
+     */
+    void set_paused(session_t &session, bool value) {
+      session.paused.store(value, std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Check whether a stream session is paused using opaque channel data.
+     */
+    bool is_paused(void *channel_data) {
+      if (!channel_data) {
+        return false;
+      }
+
+      return paused(*static_cast<session_t *>(channel_data));
+    }
+
+    /**
+     * @brief Return the control-channel peer endpoint for this session.
+     */
+    std::pair<std::string, uint16_t> peer_endpoint(session_t &session) {
+      if (session.control.peer) {
+        const auto endpoint = platf::from_sockaddr_ex((sockaddr *) &session.control.peer->address.address);
+        return {endpoint.second, endpoint.first};
+      }
+
+      return {session.control.expected_peer_address, 0};
+    }
+
+    /**
+     * @brief Check whether the control channel is connected for this session.
+     */
+    bool is_connected(session_t &session) {
+      return session.control.peer != nullptr && state(session) == state_e::RUNNING;
+    }
+
+    /**
+     * @brief Build a display label for a connected client.
+     */
+    std::string format_session_label(const std::string &address, uint16_t port, const std::string &name) {
+      auto label = std::format("{}:{}", address, port);
+      if (!name.empty()) {
+        label += " - " + name;
+      }
+
+      return label;
+    }
+
+    /**
      * @brief Stop the active streaming session and prevent new packets from being queued.
      */
     void stop(session_t &session) {
@@ -2194,23 +2278,25 @@ namespace stream {
       });
 
       BOOST_LOG(debug) << "Waiting for video to end..."sv;
-      session.videoThread.join();
+      if (session.videoThread.joinable()) {
+        session.videoThread.join();
+      }
       BOOST_LOG(debug) << "Waiting for audio to end..."sv;
-      session.audioThread.join();
+      if (session.audioThread.joinable()) {
+        session.audioThread.join();
+      }
       BOOST_LOG(debug) << "Waiting for control to end..."sv;
       session.controlEnd.view();
       // Reset input on session stop to avoid stuck repeated keys
-      BOOST_LOG(debug) << "Resetting Input..."sv;
-      input::reset(session.input);
+      if (running_sessions.load(std::memory_order_acquire) == 1) {
+        BOOST_LOG(debug) << "Resetting Input..."sv;
+        input::reset(session.input);
+      }
 
       // If this is the last session, invoke the platform callbacks
       if (--running_sessions == 0) {
         bool revert_display_config {config::video.dd.config_revert_on_disconnect};
-        if (proc::proc.running()) {
-#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
-          system_tray::update_tray_pausing(proc::proc.get_last_run_app_name());
-#endif
-        } else {
+        if (!proc::proc.running()) {
           // We have no app running and also no clients anymore.
           revert_display_config = true;
         }
@@ -2221,6 +2307,10 @@ namespace stream {
 
         platf::streaming_will_stop();
       }
+
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+      system_tray::refresh_connected_clients_menu();
+#endif
 
       BOOST_LOG(debug) << "Session ended"sv;
     }
@@ -2263,11 +2353,22 @@ namespace stream {
       if (++running_sessions == 1) {
         platf::streaming_will_start();
 #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
-        system_tray::update_tray_playing(proc::proc.get_last_run_app_name());
+        system_tray::set_tray_streaming_active(true);
 #endif
       }
 
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+      system_tray::refresh_connected_clients_menu();
+#endif
+
       return 0;
+    }
+
+    /**
+     * @brief Return the number of sessions that have started but not yet joined.
+     */
+    uint32_t running_count() {
+      return running_sessions.load(std::memory_order_relaxed);
     }
 
     /**
