@@ -217,6 +217,12 @@ int main(int argc, char *argv[]) {
   // the version should be printed to the log before anything else
   BOOST_LOG(info) << PROJECT_NAME << " version: " << PROJECT_VERSION << " commit: " << PROJECT_VERSION_COMMIT;
 
+  if (config::sunshine.flags[config::flag::PIN_STDIN]) {
+    BOOST_LOG(warning)
+      << "PIN_STDIN mode (-0): enter the Moonlight PIN in this terminal only. "
+         "Web UI pairing is disabled and remote clients cannot complete pairing."sv;
+  }
+
   // Log publisher metadata
   log_publisher_data();
 
