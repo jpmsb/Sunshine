@@ -1120,6 +1120,11 @@ namespace stream {
     });
 
     server->map(packetTypes[IDX_LOSS_STATS], [&](session_t *session, const std::string_view &payload) {
+      if (payload.size() < sizeof(int32_t) * 4) {
+        BOOST_LOG(warning) << "type [IDX_LOSS_STATS]: payload too short ("sv << payload.size() << " bytes)"sv;
+        return;
+      }
+
       int32_t *stats = (int32_t *) payload.data();
       auto count = stats[0];
       std::chrono::milliseconds t {stats[1]};
@@ -1142,6 +1147,11 @@ namespace stream {
     });
 
     server->map(packetTypes[IDX_INVALIDATE_REF_FRAMES], [&](session_t *session, const std::string_view &payload) {
+      if (payload.size() < sizeof(std::int64_t) * 2) {
+        BOOST_LOG(warning) << "type [IDX_INVALIDATE_REF_FRAMES]: payload too short ("sv << payload.size() << " bytes)"sv;
+        return;
+      }
+
       auto frames = (std::int64_t *) payload.data();
       auto firstFrame = frames[0];
       auto lastFrame = frames[1];
@@ -1157,8 +1167,18 @@ namespace stream {
     server->map(packetTypes[IDX_INPUT_DATA], [&](session_t *session, const std::string_view &payload) {
       BOOST_LOG(debug) << "type [IDX_INPUT_DATA]"sv;
 
+      if (payload.size() < sizeof(int32_t)) {
+        BOOST_LOG(warning) << "type [IDX_INPUT_DATA]: payload too short ("sv << payload.size() << " bytes)"sv;
+        return;
+      }
+
       auto tagged_cipher_length = util::endian::big(*(int32_t *) payload.data());
-      std::string_view tagged_cipher {payload.data() + sizeof(tagged_cipher_length), (size_t) tagged_cipher_length};
+      if (tagged_cipher_length < 0 || static_cast<std::size_t>(sizeof(int32_t) + tagged_cipher_length) > payload.size()) {
+        BOOST_LOG(warning) << "type [IDX_INPUT_DATA]: invalid cipher length ("sv << tagged_cipher_length << " bytes)"sv;
+        return;
+      }
+
+      std::string_view tagged_cipher {payload.data() + sizeof(tagged_cipher_length), static_cast<std::size_t>(tagged_cipher_length)};
 
       std::vector<uint8_t> plaintext;
 
