@@ -7,6 +7,7 @@
 
 // local includes
 #include "graphics.h"
+#include "src/assets_path.h"
 #include "src/file_handler.h"
 #include "src/logging.h"
 #include "src/video.h"
@@ -41,11 +42,7 @@ extern "C" {
 #define DRM_FORMAT_MOD_INVALID fourcc_mod_code(0, ((1ULL << 56) - 1))
 
 #if !defined(SUNSHINE_SHADERS_DIR)  // for testing this needs to be defined in cmake as we don't do an install
-  /**
-   * @def SUNSHINE_SHADERS_DIR
-   * @brief Macro for SUNSHINE SHADERS DIR.
-   */
-  #define SUNSHINE_SHADERS_DIR SUNSHINE_ASSETS_DIR "/shaders/opengl"
+  // Shaders are resolved at runtime through assets_path::join().
 #endif
 
 using namespace std::literals;
@@ -1020,12 +1017,12 @@ namespace egl {
     auto width_i = 1.0f / sws.out_width;
 
     {
-      constexpr std::array<const char *, 5> sources {{
-        SUNSHINE_SHADERS_DIR "/ConvertUV.frag",
-        SUNSHINE_SHADERS_DIR "/ConvertUV.vert",
-        SUNSHINE_SHADERS_DIR "/ConvertY.frag",
-        SUNSHINE_SHADERS_DIR "/Scene.vert",
-        SUNSHINE_SHADERS_DIR "/Scene.frag",
+      const std::array<std::string, 5> sources {{
+        assets_path::join("shaders/opengl/ConvertUV.frag"),
+        assets_path::join("shaders/opengl/ConvertUV.vert"),
+        assets_path::join("shaders/opengl/ConvertY.frag"),
+        assets_path::join("shaders/opengl/Scene.vert"),
+        assets_path::join("shaders/opengl/Scene.frag"),
       }};
 
       constexpr std::array<GLenum, 2> shader_type {{
@@ -1040,7 +1037,7 @@ namespace egl {
       for (size_t x = 0; x < count; ++x) {
         auto &compiled_source = compiled_sources[x];
 
-        compiled_source = gl::shader_t::compile(file_handler::read_file(sources[x]), shader_type[x % 2]);
+        compiled_source = gl::shader_t::compile(file_handler::read_file(sources[x].c_str()), shader_type[x % 2]);
         gl_drain_errors;
 
         if (compiled_source.has_right()) {
@@ -1124,12 +1121,12 @@ namespace egl {
     sws.offsetY = offsetY_f;
 
     {
-      constexpr std::array<const char *, 5> sources {{
-        SUNSHINE_SHADERS_DIR "/Scene.vert",
-        SUNSHINE_SHADERS_DIR "/ConvertV.frag",
-        SUNSHINE_SHADERS_DIR "/ConvertU.frag",
-        SUNSHINE_SHADERS_DIR "/ConvertY.frag",
-        SUNSHINE_SHADERS_DIR "/Scene.frag",
+      const std::array<std::string, 5> sources {{
+        assets_path::join("shaders/opengl/Scene.vert"),
+        assets_path::join("shaders/opengl/ConvertV.frag"),
+        assets_path::join("shaders/opengl/ConvertU.frag"),
+        assets_path::join("shaders/opengl/ConvertY.frag"),
+        assets_path::join("shaders/opengl/Scene.frag"),
       }};
 
       constexpr std::array<GLenum, 2> shader_type {{
@@ -1145,7 +1142,7 @@ namespace egl {
         auto &compiled_source = compiled_sources[x];
 
         int num = x == 0 ? 1 : 0;
-        compiled_source = gl::shader_t::compile(file_handler::read_file(sources[x]), shader_type[num]);
+        compiled_source = gl::shader_t::compile(file_handler::read_file(sources[x].c_str()), shader_type[num]);
         gl_drain_errors;
 
         if (compiled_source.has_right()) {
