@@ -84,14 +84,30 @@ namespace system_tray {
   /**
    * @brief Show a desktop notification when a client connects to a stream.
    *
-   * @param label Display label for the connected client.
+   * @param name Optional paired client name.
+   * @param address Normalized client IP address.
+   * @param port Client control port.
    */
-  void notify_client_connected(const std::string &label);
+  void notify_client_connected(const std::string &name, const std::string &address, uint16_t port);
+
+  /**
+   * @brief Show a desktop notification when a client disconnects from a stream.
+   *
+   * @param name Optional paired client name.
+   * @param address Normalized client IP address.
+   * @param port Client control port.
+   */
+  void notify_client_disconnected(const std::string &name, const std::string &address, uint16_t port);
 
   /**
    * @brief Rebuild the connected-clients submenu in the system tray.
    */
   void refresh_connected_clients_menu();
+
+  /**
+   * @brief Set the tray icon to pausing mode without showing a notification.
+   */
+  void set_tray_pausing_icon();
 
   /**
    * @brief Sets the tray icon in pausing mode (stream stopped but app running) and spawns the appropriate notification
