@@ -361,6 +361,7 @@ namespace config {
     std::uint16_t port;  ///< TCP port used by Sunshine services.
     std::string address_family;  ///< Address family requested for listening sockets.
     std::string bind_address;  ///< Local address Sunshine should bind to.
+    std::string web_ui_bind_address;  ///< Local address for the Web UI; uses bind_address when empty.
 
     std::string log_file;  ///< Path to the configured log file.
     bool notify_pre_releases;  ///< Notify users about pre-release updates.
