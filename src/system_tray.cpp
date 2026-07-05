@@ -41,6 +41,7 @@
   #include "process.h"
   #include "rtsp.h"
   #include "src/entry_handler.h"
+  #include "stream.h"
 
 using namespace std::literals;
 
@@ -152,7 +153,9 @@ namespace system_tray {
   enum class tray_pending_kind_e {
     refresh_menu,
     notify_connected,
+    notify_disconnected,
     set_streaming_active,
+    set_pausing_icon,
     update_pausing,
     update_stopped,
     require_pin,
@@ -382,16 +385,31 @@ namespace system_tray {
     tray_update(&tray);
   }
 
-  static void apply_notify_client_connected(const std::string &label) {
+  static void apply_notify_client_connected(const std::string &body) {
     clear_tray_notification_fields();
     tray_update(&tray);
 
-    static std::string notification_label;
-    notification_label = label;
+    static std::string notification_body;
+    notification_body = body;
     tray.icon = TRAY_ICON_PLAYING;
     tray.notification_title = "Client Connected";
-    tray.notification_text = notification_label.c_str();
+    tray.notification_text = notification_body.c_str();
     tray.notification_icon = TRAY_ICON_PLAYING;
+    tray_update(&tray);
+
+    clear_tray_notification_fields();
+  }
+
+  static void apply_notify_client_disconnected(const std::string &body) {
+    clear_tray_notification_fields();
+    tray_update(&tray);
+
+    static std::string notification_body;
+    notification_body = body;
+    tray.icon = TRAY_ICON;
+    tray.notification_title = "Client Disconnected";
+    tray.notification_text = notification_body.c_str();
+    tray.notification_icon = TRAY_ICON;
     tray_update(&tray);
 
     clear_tray_notification_fields();
@@ -420,8 +438,17 @@ namespace system_tray {
           apply_notify_client_connected(item.text);
           apply_refresh_connected_clients_menu();
           break;
+        case tray_pending_kind_e::notify_disconnected:
+          apply_notify_client_disconnected(item.text);
+          apply_refresh_connected_clients_menu();
+          break;
         case tray_pending_kind_e::set_streaming_active:
           tray.icon = item.active ? TRAY_ICON_PLAYING : TRAY_ICON;
+          clear_tray_notification_fields();
+          tray_update(&tray);
+          break;
+        case tray_pending_kind_e::set_pausing_icon:
+          tray.icon = TRAY_ICON_PAUSING;
           clear_tray_notification_fields();
           tray_update(&tray);
           break;
@@ -651,12 +678,26 @@ namespace system_tray {
     enqueue_tray_update(tray_pending_kind_e::set_streaming_active, {}, active);
   }
 
-  void notify_client_connected(const std::string &label) {
-    enqueue_tray_update(tray_pending_kind_e::notify_connected, label);
+  void notify_client_connected(const std::string &name, const std::string &address, uint16_t port) {
+    enqueue_tray_update(
+      tray_pending_kind_e::notify_connected,
+      stream::session::format_client_notification_body(address, port, name)
+    );
+  }
+
+  void notify_client_disconnected(const std::string &name, const std::string &address, uint16_t port) {
+    enqueue_tray_update(
+      tray_pending_kind_e::notify_disconnected,
+      stream::session::format_client_notification_body(address, port, name)
+    );
   }
 
   void refresh_connected_clients_menu() {
     enqueue_tray_update(tray_pending_kind_e::refresh_menu);
+  }
+
+  void set_tray_pausing_icon() {
+    enqueue_tray_update(tray_pending_kind_e::set_pausing_icon);
   }
 
   void update_tray_pausing(std::string app_name) {
