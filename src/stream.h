@@ -156,5 +156,14 @@ namespace stream {
      * @return Label formatted as `IP:port - name` or `IP:port` when name is empty.
      */
     std::string format_session_label(const std::string &address, uint16_t port, const std::string &name);
+    /**
+     * @brief Build a multiline notification body for client connect/disconnect events.
+     *
+     * @param address Normalized client IP address.
+     * @param port Client control port.
+     * @param name Optional paired client name. When empty, the name line is omitted.
+     * @return Body formatted with `Nome:`, `IP:`, and `Porta:` lines.
+     */
+    std::string format_client_notification_body(const std::string &address, uint16_t port, const std::string &name);
   }  // namespace session
 }  // namespace stream
