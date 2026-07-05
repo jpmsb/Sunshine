@@ -743,18 +743,20 @@ namespace stream {
             const auto label = session::format_session_label(endpoint.first, endpoint.second, metadata.name);
             BOOST_LOG(info) << "CLIENT CONNECTED: "sv << label;
 #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
-            system_tray::notify_client_connected(label);
+            system_tray::notify_client_connected(metadata.name, endpoint.first, endpoint.second);
 #endif
           }
           break;
         case ENET_EVENT_TYPE_DISCONNECT:
-          BOOST_LOG(info) << "CLIENT DISCONNECTED"sv;
-          if (session->state.load(std::memory_order_acquire) == session::state_e::RUNNING) {
-            session::stop(*session);
+          {
+            const auto endpoint = session::peer_endpoint(*session);
+            const auto metadata = nvhttp::get_client_metadata_by_cert(session->client_cert);
+            const auto label = session::format_session_label(endpoint.first, endpoint.second, metadata.name);
+            BOOST_LOG(info) << "CLIENT DISCONNECTED: "sv << label;
+            if (session->state.load(std::memory_order_acquire) == session::state_e::RUNNING) {
+              session::stop(*session);
+            }
           }
-#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
-          system_tray::refresh_connected_clients_menu();
-#endif
           break;
         case ENET_EVENT_TYPE_NONE:
           break;
@@ -2243,6 +2245,19 @@ namespace stream {
       }
 
       return label;
+    }
+
+    /**
+     * @brief Build a multiline notification body for client connect/disconnect events.
+     */
+    std::string format_client_notification_body(const std::string &address, uint16_t port, const std::string &name) {
+      std::string body;
+      if (!name.empty()) {
+        body += std::format("Nome: {}\n", name);
+      }
+      body += std::format("IP: {}\n", address);
+      body += std::format("Porta: {}", port);
+      return body;
     }
 
     /**
