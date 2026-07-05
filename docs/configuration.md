@@ -1542,6 +1542,34 @@ editing the `conf` file in a text editor. Use the examples as reference.
     </tr>
 </table>
 
+### web_ui_bind_address
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Set the IP address used by the Web UI (HTTPS configuration server) only.
+            When empty, the Web UI uses @ref sunshine.bind_address "bind_address" or binds to all
+            interfaces when that is also empty.
+            <br><br>
+            Use @code{127.0.0.1} or @code{::1} to keep the Web UI on localhost while exposing
+            GameStream ports on all interfaces for remote Moonlight access.
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            (empty - use bind_address)
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            web_ui_bind_address = 127.0.0.1
+            @endcode</td>
+    </tr>
+</table>
+
 ### port
 
 <table>
@@ -1729,6 +1757,36 @@ editing the `conf` file in a text editor. Use the examples as reference.
         <td>encryption is mandatory and unencrypted connections are rejected</td>
     </tr>
 </table>
+
+### WAN exposure hardening
+
+When exposing Sunshine to the internet for remote Moonlight streaming, use a configuration profile
+similar to the following. Remote pairing does **not** require exposing the Web UI: Moonlight clients
+initiate pairing over the GameStream HTTP port, while the host approves the PIN locally.
+
+@code{}
+origin_web_ui_allowed = pc
+web_ui_bind_address = 127.0.0.1
+wan_encryption_mode = 2
+upnp = disabled
+min_log_level = 2
+@endcode
+
+**Ports to forward manually on your router** (default base port @code{47989}):
+
+| Port | Protocol | Service |
+|------|----------|---------|
+| 47989 | TCP | GameStream HTTP (pairing, serverinfo) |
+| 47984 | TCP | GameStream HTTPS (launch, resume) |
+| 48010 | TCP | RTSP setup |
+| 47998 | UDP | Video |
+| 47999 | UDP | Control |
+| 48000 | UDP | Audio |
+
+@warning{Do **not** forward TCP port @code{47990} (Web UI) to the internet.}
+
+@tip{Use a strong Web UI password even when the UI is localhost-only:
+@code{sunshine --creds username strong-password}.}
 
 ### ping_timeout
 
