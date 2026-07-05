@@ -31,6 +31,7 @@
 
 // local includes
 #include "config.h"
+#include "assets_path.h"
 #include "confighttp.h"
 #include "crypto.h"
 #include "display_device.h"
@@ -43,6 +44,8 @@
 #include "platform/common.h"
 #include "process.h"
 #include "rtsp.h"
+#include "stream.h"
+#include "system_tray.h"
 #include "utility.h"
 #include "uuid.h"
 
@@ -505,7 +508,7 @@ namespace confighttp {
 
     print_req(request);
 
-    const std::string content = file_handler::read_file((std::string(WEB_DIR) + html_file).c_str());
+    const std::string content = file_handler::read_file((assets_path::web() + html_file).c_str());
     SimpleWeb::CaseInsensitiveMultimap headers;
     headers.emplace("Content-Type", "text/html; charset=utf-8");
 
@@ -530,7 +533,7 @@ namespace confighttp {
 
     print_req(request);
 
-    std::ifstream in(WEB_DIR "images/sunshine.ico", std::ios::binary);
+    std::ifstream in(assets_path::web() + "images/sunshine.ico", std::ios::binary);
     SimpleWeb::CaseInsensitiveMultimap headers;
     headers.emplace("Content-Type", "image/x-icon");
     headers.emplace("X-Frame-Options", "DENY");
@@ -552,7 +555,7 @@ namespace confighttp {
 
     print_req(request);
 
-    std::ifstream in(WEB_DIR "images/logo-sunshine-45.png", std::ios::binary);
+    std::ifstream in(assets_path::web() + "images/logo-sunshine-45.png", std::ios::binary);
     SimpleWeb::CaseInsensitiveMultimap headers;
     headers.emplace("Content-Type", "image/png");
     headers.emplace("X-Frame-Options", "DENY");
@@ -582,7 +585,7 @@ namespace confighttp {
     }
 
     print_req(request);
-    fs::path webDirPath(WEB_DIR);
+    fs::path webDirPath(assets_path::web());
     fs::path nodeModulesPath(webDirPath / "assets");
 
     // .relative_path is needed to shed any leading slash that might exist in the request path
@@ -900,6 +903,237 @@ namespace confighttp {
   }
 
   /**
+   * @brief Convert a stream session state to a JSON-friendly string.
+   *
+   * @param state Stream session lifecycle state.
+   * @return String representation of the session state.
+   */
+  std::string session_state_to_string(stream::session::state_e state) {
+    using state_e = stream::session::state_e;
+    switch (state) {
+      case state_e::RUNNING:
+        return "running";
+      case state_e::STARTING:
+        return "starting";
+      case state_e::STOPPING:
+        return "stopping";
+      case state_e::STOPPED:
+      default:
+        return "stopped";
+    }
+  }
+
+  /**
+   * @brief Get the list of active streaming sessions.
+   * @param response The HTTP response object.
+   * @param request The HTTP request object.
+   *
+   * @api_examples{/api/clients/sessions| GET| null}
+   */
+  void getClientSessions(const resp_https_t &response, const req_https_t &request) {
+    if (!authenticate(response, request)) {
+      return;
+    }
+
+    print_req(request);
+
+    nlohmann::json sessions = nlohmann::json::array();
+    for (const auto &session : rtsp_stream::list_active_sessions()) {
+      nlohmann::json session_node;
+      session_node["session_id"] = session.session_id;
+      session_node["uuid"] = session.uuid;
+      session_node["name"] = session.name;
+      session_node["address"] = session.address;
+      session_node["port"] = session.port;
+      session_node["label"] = session.label;
+      session_node["state"] = session_state_to_string(session.state);
+      session_node["paused"] = session.paused;
+      session_node["connected"] = session.connected;
+      sessions.push_back(std::move(session_node));
+    }
+
+    nlohmann::json output_tree;
+    output_tree["sessions"] = sessions;
+    output_tree["status"] = true;
+    send_response(response, output_tree);
+  }
+
+  /**
+   * @brief Resolve a session target from a JSON request body.
+   *
+   * @param input Parsed JSON request body.
+   * @param session_id Resolved launch-session identifier.
+   * @param uuid Resolved paired client UUID.
+   * @return True when either `session_id` or `uuid` is present.
+   */
+  bool resolve_session_target(const nlohmann::json &input, uint32_t &session_id, std::string &uuid) {
+    if (input.contains("session_id")) {
+      session_id = input.at("session_id").get<uint32_t>();
+      return true;
+    }
+
+    if (input.contains("uuid")) {
+      uuid = input.at("uuid").get<std::string>();
+      return !uuid.empty();
+    }
+
+    return false;
+  }
+
+  /**
+   * @brief Disconnect an active streaming session.
+   * @param response The HTTP response object.
+   * @param request The HTTP request object.
+   *
+   * @api_examples{/api/clients/disconnect| POST| {"session_id":1}}
+   */
+  void disconnectClient(resp_https_t response, req_https_t request) {
+    if (!check_content_type(response, request, "application/json")) {
+      return;
+    }
+    if (!authenticate(response, request)) {
+      return;
+    }
+    std::string client_id = get_client_id(request);
+    if (!validate_csrf_token(response, request, client_id)) {
+      return;
+    }
+
+    print_req(request);
+
+    std::stringstream ss;
+    ss << request->content.rdbuf();
+    try {
+      const nlohmann::json input_tree = nlohmann::json::parse(ss.str());
+      uint32_t session_id = 0;
+      std::string uuid;
+      if (!resolve_session_target(input_tree, session_id, uuid)) {
+        bad_request(response, request, "Missing session_id or uuid");
+        return;
+      }
+
+      if (!uuid.empty()) {
+        rtsp_stream::terminate_session_by_uuid(uuid);
+      } else {
+        rtsp_stream::terminate_session(session_id);
+      }
+
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+      system_tray::refresh_connected_clients_menu();
+#endif
+
+      nlohmann::json output_tree;
+      output_tree["status"] = true;
+      send_response(response, output_tree);
+    } catch (nlohmann::json::exception &e) {
+      BOOST_LOG(warning) << "Disconnect Client: "sv << e.what();
+      bad_request(response, request, e.what());
+    }
+  }
+
+  /**
+   * @brief Pause an active streaming session.
+   * @param response The HTTP response object.
+   * @param request The HTTP request object.
+   *
+   * @api_examples{/api/clients/pause| POST| {"session_id":1}}
+   */
+  void pauseClient(resp_https_t response, req_https_t request) {
+    if (!check_content_type(response, request, "application/json")) {
+      return;
+    }
+    if (!authenticate(response, request)) {
+      return;
+    }
+    std::string client_id = get_client_id(request);
+    if (!validate_csrf_token(response, request, client_id)) {
+      return;
+    }
+
+    print_req(request);
+
+    std::stringstream ss;
+    ss << request->content.rdbuf();
+    try {
+      const nlohmann::json input_tree = nlohmann::json::parse(ss.str());
+      uint32_t session_id = 0;
+      std::string uuid;
+      if (!resolve_session_target(input_tree, session_id, uuid)) {
+        bad_request(response, request, "Missing session_id or uuid");
+        return;
+      }
+
+      if (!uuid.empty()) {
+        rtsp_stream::pause_session_by_uuid(uuid);
+      } else {
+        rtsp_stream::pause_session(session_id);
+      }
+
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+      system_tray::refresh_connected_clients_menu();
+#endif
+
+      nlohmann::json output_tree;
+      output_tree["status"] = true;
+      send_response(response, output_tree);
+    } catch (nlohmann::json::exception &e) {
+      BOOST_LOG(warning) << "Pause Client: "sv << e.what();
+      bad_request(response, request, e.what());
+    }
+  }
+
+  /**
+   * @brief Resume a paused streaming session.
+   * @param response The HTTP response object.
+   * @param request The HTTP request object.
+   *
+   * @api_examples{/api/clients/resume| POST| {"session_id":1}}
+   */
+  void resumeClient(resp_https_t response, req_https_t request) {
+    if (!check_content_type(response, request, "application/json")) {
+      return;
+    }
+    if (!authenticate(response, request)) {
+      return;
+    }
+    std::string client_id = get_client_id(request);
+    if (!validate_csrf_token(response, request, client_id)) {
+      return;
+    }
+
+    print_req(request);
+
+    std::stringstream ss;
+    ss << request->content.rdbuf();
+    try {
+      const nlohmann::json input_tree = nlohmann::json::parse(ss.str());
+      uint32_t session_id = 0;
+      std::string uuid;
+      if (!resolve_session_target(input_tree, session_id, uuid)) {
+        bad_request(response, request, "Missing session_id or uuid");
+        return;
+      }
+
+      if (!uuid.empty()) {
+        rtsp_stream::resume_session_by_uuid(uuid);
+      } else {
+        rtsp_stream::resume_session(session_id);
+      }
+
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+      system_tray::refresh_connected_clients_menu();
+#endif
+
+      nlohmann::json output_tree;
+      output_tree["status"] = true;
+      send_response(response, output_tree);
+    } catch (nlohmann::json::exception &e) {
+      BOOST_LOG(warning) << "Resume Client: "sv << e.what();
+      bad_request(response, request, e.what());
+    }
+  }
+
+  /**
    * @brief Enable or disable a client.
    * @param response The HTTP response object.
    * @param request The HTTP request object.
@@ -1173,7 +1407,7 @@ namespace confighttp {
       std::string validated_path = proc::validate_app_image_path(app_image_path);
 
       // Check if we got the default image path (means validation failed or no image configured)
-      if (validated_path == DEFAULT_APP_IMAGE_PATH) {
+      if (validated_path == proc::default_app_image_path()) {
         BOOST_LOG(debug) << "Application at index " << index << " does not have a valid cover image";
         not_found(response, request, "Cover image not found");
         return;
@@ -1836,6 +2070,10 @@ namespace confighttp {
     server.resource["^/api/apps/([0-9]+)$"]["DELETE"] = deleteApp;
     server.resource["^/api/apps/close$"]["POST"] = closeApp;
     server.resource["^/api/clients/list$"]["GET"] = getClients;
+    server.resource["^/api/clients/sessions$"]["GET"] = getClientSessions;
+    server.resource["^/api/clients/disconnect$"]["POST"] = disconnectClient;
+    server.resource["^/api/clients/pause$"]["POST"] = pauseClient;
+    server.resource["^/api/clients/resume$"]["POST"] = resumeClient;
     server.resource["^/api/clients/unpair$"]["POST"] = unpair;
     server.resource["^/api/clients/unpair-all$"]["POST"] = unpairAll;
     server.resource["^/api/clients/update$"]["POST"] = updateClient;
