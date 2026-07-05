@@ -148,6 +148,14 @@ namespace net {
     return std::string(af_to_any_address_string(af));
   }
 
+  std::string get_web_ui_bind_address(const af_e af) {
+    if (!config::sunshine.web_ui_bind_address.empty()) {
+      return config::sunshine.web_ui_bind_address;
+    }
+
+    return get_bind_address(af);
+  }
+
   boost::asio::ip::address normalize_address(boost::asio::ip::address address) {
     // Convert IPv6-mapped IPv4 addresses into regular IPv4 addresses
     if (address.is_v6()) {
