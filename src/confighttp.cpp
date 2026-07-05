@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <format>
+#include <chrono>
 #include <fstream>
 #include <string_view>
 
@@ -180,17 +181,32 @@ namespace confighttp {
   }
 
   /**
+   * @brief Enforce the configured Web UI origin policy for a request.
+   *
+   * @param response The HTTP response object.
+   * @param request The HTTP request object.
+   * @return True when the request origin is allowed.
+   */
+  bool check_web_ui_origin(const resp_https_t &response, const req_https_t &request) {
+    const auto address = net::addr_to_normalized_string(request->remote_endpoint().address());
+
+    if (const auto ip_type = net::from_address(address); ip_type > http::origin_web_ui_allowed) {
+      BOOST_LOG(info) << "Web UI: ["sv << address << "] -- denied"sv;
+      response->write(SimpleWeb::StatusCode::client_error_forbidden);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
    * @brief Authenticate the user.
    * @param response The HTTP response object.
    * @param request The HTTP request object.
    * @return True if the user is authenticated, false otherwise.
    */
   bool authenticate(const resp_https_t &response, const req_https_t &request) {
-    auto address = net::addr_to_normalized_string(request->remote_endpoint().address());
-
-    if (const auto ip_type = net::from_address(address); ip_type > http::origin_web_ui_allowed) {
-      BOOST_LOG(info) << "Web UI: ["sv << address << "] -- denied"sv;
-      response->write(SimpleWeb::StatusCode::client_error_forbidden);
+    if (!check_web_ui_origin(response, request)) {
       return false;
     }
 
@@ -473,6 +489,10 @@ namespace confighttp {
    * @param redirect_if_username If true, redirect to "/" when the username is set (for welcome page).
    */
   void getPage(const resp_https_t &response, const req_https_t &request, const char *html_file, const bool require_auth, const bool redirect_if_username) {
+    if (!check_web_ui_origin(response, request)) {
+      return;
+    }
+
     // Special handling for welcome page: redirect if the username is already set
     if (redirect_if_username && !config::sunshine.username.empty()) {
       send_redirect(response, request, "/");
@@ -504,6 +524,10 @@ namespace confighttp {
    * @todo use mime_types map
    */
   void getFaviconImage(const resp_https_t &response, const req_https_t &request) {
+    if (!check_web_ui_origin(response, request)) {
+      return;
+    }
+
     print_req(request);
 
     std::ifstream in(WEB_DIR "images/sunshine.ico", std::ios::binary);
@@ -522,6 +546,10 @@ namespace confighttp {
    * @todo use mime_types map
    */
   void getSunshineLogoImage(const resp_https_t &response, const req_https_t &request) {
+    if (!check_web_ui_origin(response, request)) {
+      return;
+    }
+
     print_req(request);
 
     std::ifstream in(WEB_DIR "images/logo-sunshine-45.png", std::ios::binary);
@@ -549,6 +577,10 @@ namespace confighttp {
    * @param request The HTTP request object.
    */
   void getAsset(const resp_https_t &response, const req_https_t &request) {
+    if (!check_web_ui_origin(response, request)) {
+      return;
+    }
+
     print_req(request);
     fs::path webDirPath(WEB_DIR);
     fs::path nodeModulesPath(webDirPath / "assets");
@@ -1035,7 +1067,9 @@ namespace confighttp {
    * @api_examples{/api/configLocale| GET| null}
    */
   void getLocale(const resp_https_t &response, const req_https_t &request) {
-    // we need to return the locale whether authenticated or not
+    if (!check_web_ui_origin(response, request)) {
+      return;
+    }
 
     print_req(request);
 
@@ -1274,6 +1308,9 @@ namespace confighttp {
     if (!config::sunshine.username.empty() && !authenticate(response, request)) {
       return;
     }
+    if (config::sunshine.username.empty() && !check_web_ui_origin(response, request)) {
+      return;
+    }
 
     std::string client_id = get_client_id(request);
     if (!validate_csrf_token(response, request, client_id)) {
@@ -1367,6 +1404,7 @@ namespace confighttp {
       nlohmann::json input_tree = nlohmann::json::parse(ss);
       const std::string name = input_tree.value("name", "");
       const std::string pin = input_tree.value("pin", "");
+      const std::string unique_id = input_tree.value("uniqueid", "");
 
       int _pin = 0;
       _pin = std::stoi(pin);
@@ -1374,7 +1412,7 @@ namespace confighttp {
         bad_request(response, request, "PIN must be between 0000 and 9999");
       }
 
-      output_tree["status"] = nvhttp::pin(pin, name);
+      output_tree["status"] = nvhttp::pin(pin, name, unique_id);
       send_response(response, output_tree);
     } catch (std::exception &e) {
       BOOST_LOG(warning) << "SavePin: "sv << e.what();
@@ -1821,7 +1859,7 @@ namespace confighttp {
     server.resource["^/assets\\/.+$"]["GET"] = getAsset;
 
     server.config.reuse_address = true;
-    server.config.address = net::get_bind_address(address_family);
+    server.config.address = net::get_web_ui_bind_address(address_family);
     server.config.port = port_https;
 
     // Store bind address for logging, use "localhost" as fallback for wildcard addresses
