@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="auto">
+
+<head>
+  <%- header %>
+</head>
+
+<body id="app" v-cloak>
+  <Navbar></Navbar>
+  <div id="content" class="container">
+    <h1 class="my-4">{{ $t('devices.title') }}</h1>
+    <p class="text-muted">{{ $t('devices.description') }}</p>
+
+    <!-- Connected sessions -->
+    <div class="card my-4">
+      <div class="card-body">
+        <h2 id="connected_devices">{{ $t('devices.connected_title') }}</h2>
+        <p>{{ $t('devices.connected_desc') }}</p>
+      </div>
+      <ul class="list-group list-group-flush" v-if="connectedSessions && connectedSessions.length > 0">
+        <li v-for="session in connectedSessions" :key="session.session_id" class="list-group-item">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <div class="flex-grow-1">
+              <div>{{ session.label }}</div>
+              <small class="text-muted">
+                {{ $t('devices.address') }}: {{ session.address || '—' }}
+                · {{ $t('devices.port') }}: {{ session.port || '—' }}
+              </small>
+              <span v-if="session.paused" class="badge bg-warning text-dark ms-2">{{ $t('troubleshooting.connected_clients_paused') }}</span>
+            </div>
+            <button class="btn btn-warning btn-sm" @click="toggleSessionPause(session)">
+              {{ session.paused ? $t('troubleshooting.connected_clients_resume') : $t('troubleshooting.connected_clients_pause') }}
+            </button>
+            <button class="btn btn-danger btn-sm" @click="disconnectSession(session.session_id)">
+              {{ $t('troubleshooting.connected_clients_disconnect') }}
+            </button>
+          </div>
+        </li>
+      </ul>
+      <ul v-else class="list-group list-group-flush">
+        <li class="list-group-item p-3 text-center">
+          <em>{{ $t('troubleshooting.connected_clients_none') }}</em>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Paired devices -->
+    <div class="card my-4">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2 id="paired_devices" class="mb-0">{{ $t('devices.paired_title') }}</h2>
+          <button class="btn btn-danger" :disabled="unpairAllPressed" @click="unpairAll">
+            <trash-2 :size="18" class="icon"></trash-2>
+            {{ $t('troubleshooting.unpair_all') }}
+          </button>
+        </div>
+        <p>{{ $t('devices.paired_desc') }}</p>
+        <div class="alert alert-success d-flex align-items-center" v-if="showApplyMessage">
+          <check-circle :size="18" class="icon"></check-circle>
+          <div><b>{{ $t('_common.success') }}</b> {{ $t('troubleshooting.unpair_single_success') }}</div>
+          <button class="btn btn-success ms-auto" @click="clickedApplyBanner">{{ $t('_common.dismiss') }}</button>
+        </div>
+        <div class="alert alert-success" v-if="unpairAllStatus === true">
+          <check-circle :size="18" class="icon"></check-circle>
+          {{ $t('troubleshooting.unpair_all_success') }}
+        </div>
+        <div class="alert alert-danger" v-if="unpairAllStatus === false">
+          <alert-circle :size="18" class="icon"></alert-circle>
+          {{ $t('troubleshooting.unpair_all_error') }}
+        </div>
+        <div class="alert alert-success" v-if="nameSaveStatus === true">
+          <check-circle :size="18" class="icon"></check-circle>
+          {{ $t('devices.save_name_success') }}
+        </div>
+        <div class="alert alert-danger" v-if="nameSaveStatus === false">
+          <alert-circle :size="18" class="icon"></alert-circle>
+          {{ $t('devices.save_name_error') }}
+        </div>
+      </div>
+      <ul class="list-group list-group-flush" v-if="clients && clients.length > 0">
+        <li v-for="client in clients" :key="client.uuid" class="list-group-item">
+          <div class="row g-3 align-items-center">
+            <div class="col-lg-4">
+              <label class="form-label mb-1" :for="'name-' + client.uuid">{{ $t('devices.name') }}</label>
+              <div class="input-group">
+                <input
+                  :id="'name-' + client.uuid"
+                  type="text"
+                  class="form-control"
+                  v-model="clientNames[client.uuid]"
+                  :placeholder="$t('troubleshooting.unpair_single_unknown')"
+                />
+                <button class="btn btn-outline-primary" @click="saveClientName(client.uuid)">
+                  {{ $t('devices.save_name') }}
+                </button>
+              </div>
+            </div>
+            <div class="col-lg-3">
+              <div class="text-muted small">{{ $t('devices.address') }}</div>
+              <div>{{ clientEndpoint(client).address }}</div>
+            </div>
+            <div class="col-lg-2">
+              <div class="text-muted small">{{ $t('devices.port') }}</div>
+              <div>{{ clientEndpoint(client).port }}</div>
+            </div>
+            <div class="col-lg-3">
+              <div class="text-muted small">{{ $t('devices.paired_at') }}</div>
+              <div>{{ formatPairedAt(client) }}</div>
+            </div>
+            <div class="col-12 d-flex align-items-center justify-content-end gap-2">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       :id="'toggle-' + client.uuid"
+                       :checked="client.enabled"
+                       :aria-checked="client.enabled.toString()"
+                       @change="toggleClient(client.uuid, !client.enabled)">
+                <label class="form-check-label" :for="'toggle-' + client.uuid">{{ $t('devices.enabled') }}</label>
+              </div>
+              <button class="btn btn-danger btn-sm" @click="unpairSingle(client.uuid)">
+                <trash-2 :size="18" class="icon"></trash-2>
+                {{ $t('devices.unpair') }}
+              </button>
+            </div>
+          </div>
+        </li>
+      </ul>
+      <ul v-else class="list-group list-group-flush">
+        <li class="list-group-item p-3 text-center">
+          <em>{{ $t('troubleshooting.unpair_single_no_devices') }}</em>
+        </li>
+      </ul>
+    </div>
+  </div>
+</body>
+
+<script type="module">
+  import { createApp } from 'vue'
+  import { initApp } from './init'
+  import Navbar from './Navbar.vue'
+  import { apiFetch } from './fetch_utils'
+  import {
+    AlertCircle,
+    CheckCircle,
+    Trash2,
+  } from '@lucide/vue'
+
+  let app = createApp({
+    components: {
+      Navbar,
+      AlertCircle,
+      CheckCircle,
+      Trash2,
+    },
+    inject: ['i18n'],
+    data() {
+      return {
+        clients: [],
+        clientNames: {},
+        connectedSessions: [],
+        sessionsInterval: null,
+        showApplyMessage: false,
+        unpairAllPressed: false,
+        unpairAllStatus: null,
+        nameSaveStatus: null,
+      }
+    },
+    created() {
+      this.sessionsInterval = setInterval(() => {
+        this.refreshConnectedSessions()
+      }, 3000)
+      this.refreshClients()
+      this.refreshConnectedSessions()
+    },
+    beforeUnmount() {
+      clearInterval(this.sessionsInterval)
+    },
+    methods: {
+      refreshClients() {
+        fetch('./api/clients/list')
+          .then((response) => response.json())
+          .then((response) => {
+            if (response.status === true && response.named_certs && response.named_certs.length) {
+              this.clients = response.named_certs.sort((a, b) => {
+                return (a.name.toLowerCase() > b.name.toLowerCase() || a.name === '' ? 1 : -1)
+              })
+              for (const client of this.clients) {
+                if (!(client.uuid in this.clientNames)) {
+                  this.clientNames[client.uuid] = client.name
+                }
+              }
+            } else {
+              this.clients = []
+            }
+          })
+      },
+      refreshConnectedSessions() {
+        fetch('./api/clients/sessions')
+          .then((response) => response.json())
+          .then((response) => {
+            if (response.status === true && response.sessions) {
+              this.connectedSessions = response.sessions.sort((a, b) => {
+                return a.label.toLowerCase() > b.label.toLowerCase() ? 1 : -1
+              })
+            } else {
+              this.connectedSessions = []
+            }
+          })
+      },
+      activeSessionForClient(uuid) {
+        return this.connectedSessions.find((session) => session.uuid === uuid)
+      },
+      clientEndpoint(client) {
+        const active = this.activeSessionForClient(client.uuid)
+        if (active) {
+          return {
+            address: active.address || '—',
+            port: active.port || '—',
+          }
+        }
+        const address = client.last_address || ''
+        const port = client.last_port || 0
+        return {
+          address: address || '—',
+          port: port ? port : '—',
+        }
+      },
+      formatPairedAt(client) {
+        if (!client.paired_at) {
+          return this.$t('devices.unknown_pairing_date')
+        }
+        const date = new Date(client.paired_at)
+        if (Number.isNaN(date.getTime())) {
+          return client.paired_at
+        }
+        return date.toLocaleString()
+      },
+      saveClientName(uuid) {
+        const name = (this.clientNames[uuid] || '').trim()
+        apiFetch('./api/clients/update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ uuid, name }),
+        })
+          .then((response) => response.json())
+          .then((response) => {
+            this.nameSaveStatus = response.status === true
+            if (response.status === true) {
+              this.refreshClients()
+            }
+            setTimeout(() => {
+              this.nameSaveStatus = null
+            }, 5000)
+          })
+          .catch(() => {
+            this.nameSaveStatus = false
+            setTimeout(() => {
+              this.nameSaveStatus = null
+            }, 5000)
+          })
+      },
+      toggleClient(uuid, enabled) {
+        apiFetch('./api/clients/update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ uuid, enabled }),
+        }).then(() => {
+          this.refreshClients()
+        })
+      },
+      unpairSingle(uuid) {
+        apiFetch('./api/clients/unpair', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ uuid }),
+        }).then(() => {
+          this.showApplyMessage = true
+          delete this.clientNames[uuid]
+          this.refreshClients()
+        })
+      },
+      unpairAll() {
+        this.unpairAllPressed = true
+        apiFetch('./api/clients/unpair-all', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        })
+          .then((response) => response.json())
+          .then((response) => {
+            this.unpairAllPressed = false
+            this.unpairAllStatus = response.status
+            this.clientNames = {}
+            setTimeout(() => {
+              this.unpairAllStatus = null
+            }, 5000)
+            this.refreshClients()
+          })
+      },
+      toggleSessionPause(session) {
+        const endpoint = session.paused ? './api/clients/resume' : './api/clients/pause'
+        apiFetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ session_id: session.session_id }),
+        }).then(() => {
+          this.refreshConnectedSessions()
+        })
+      },
+      disconnectSession(sessionId) {
+        apiFetch('./api/clients/disconnect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ session_id: sessionId }),
+        }).then(() => {
+          this.refreshConnectedSessions()
+        })
+      },
+      clickedApplyBanner() {
+        this.showApplyMessage = false
+      },
+    },
+  })
+
+  initApp(app)
+</script>
+
+</html>
