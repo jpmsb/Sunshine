@@ -19,11 +19,13 @@
 #include <thread>
 
 // lib imports
+#include <nlohmann/json.hpp>
 #include <Simple-Web-Server/client_https.hpp>
 #include <Simple-Web-Server/crypto.hpp>
 #include <Simple-Web-Server/server_https.hpp>
 
 // local imports
+#include <src/assets_path.h>
 #include <src/config.h>
 #include <src/confighttp.h>
 #include <src/crypto.h>
@@ -100,6 +102,7 @@ protected:
   std::string saved_password;
   std::string saved_salt;
   std::string saved_locale;
+  bool saved_pin_stdin = false;
   std::vector<std::string> saved_csrf_allowed_origins;
   std::filesystem::path test_web_dir;
   std::filesystem::path cert_file;
@@ -113,6 +116,7 @@ protected:
     saved_password = config::sunshine.password;
     saved_salt = config::sunshine.salt;
     saved_locale = config::sunshine.locale;
+    saved_pin_stdin = config::sunshine.flags.test(config::flag::PIN_STDIN);
     saved_csrf_allowed_origins = config::sunshine.csrf_allowed_origins;
 
     // Set up test credentials
@@ -135,8 +139,8 @@ protected:
     test_web_dir = std::filesystem::temp_directory_path() / "sunshine_test_confighttp";  // NOSONAR(cpp:S5443) - safe for tests
     std::filesystem::create_directories(test_web_dir / "web");
 
-    // Create test HTML file in WEB_DIR, creating parent directories with proper permissions
-    std::filesystem::path web_dir_path(WEB_DIR);
+    // Create test HTML file in the web assets directory
+    std::filesystem::path web_dir_path(assets_path::web());
     std::filesystem::create_directories(web_dir_path);
     web_dir_test_file = web_dir_path / "test_page.html";
 
@@ -272,7 +276,7 @@ protected:
                                                 const std::shared_ptr<SimpleWeb::ServerBase<SimpleWeb::HTTPS>::Request> &request
                                               ) {
       // Call the actual confighttp::getPage function
-      // Note: This will read from WEB_DIR, so we need to ensure the file exists there
+      // Note: This will read from the web assets directory, so we need to ensure the file exists there
       confighttp::getPage(response, request, "test_page.html", true, false);
     };
 
@@ -299,6 +303,14 @@ protected:
                                                 ) {
       // Call the actual confighttp::getLocale function
       confighttp::getLocale(response, request);
+    };
+
+    // Add a route to test getConfig
+    server->resource["^/config-test$"]["GET"] = [](
+                                                  const std::shared_ptr<SimpleWeb::ServerBase<SimpleWeb::HTTPS>::Response> &response,
+                                                  const std::shared_ptr<SimpleWeb::ServerBase<SimpleWeb::HTTPS>::Request> &request
+                                                ) {
+      confighttp::getConfig(response, request);
     };
 
     // Add a route to test browseDirectory
@@ -345,9 +357,10 @@ protected:
     config::sunshine.password = saved_password;
     config::sunshine.salt = saved_salt;
     config::sunshine.locale = saved_locale;
+    config::sunshine.flags[config::flag::PIN_STDIN] = saved_pin_stdin;
     config::sunshine.csrf_allowed_origins = saved_csrf_allowed_origins;
 
-    // Clean up test HTML file from WEB_DIR
+    // Clean up test HTML file from the web assets directory
     if (std::filesystem::exists(web_dir_test_file)) {
       std::filesystem::remove(web_dir_test_file);
     }
@@ -737,6 +750,36 @@ TEST_F(ConfigHttpTest, GetLocaleReturnsJson) {
   const std::string body = response->content.string();
   ASSERT_TRUE(body.find("\"status\":true") != std::string::npos || body.find("\"status\": true") != std::string::npos);
   ASSERT_TRUE(body.find("\"locale\":\"en\"") != std::string::npos || body.find("\"locale\": \"en\"") != std::string::npos);
+}
+
+// Test: confighttp::getConfig() reports pin_stdin=false by default
+TEST_F(ConfigHttpTest, GetConfigReportsPinStdinDisabled) {
+  config::sunshine.flags[config::flag::PIN_STDIN] = false;
+
+  SimpleWeb::CaseInsensitiveMultimap headers;
+  headers.emplace("Authorization", create_auth_header("testuser", "testpass"));
+
+  const auto response = client->request("GET", "/config-test", "", headers);
+  ASSERT_EQ(response->status_code, "200 OK");
+
+  const auto body = nlohmann::json::parse(response->content.string());
+  ASSERT_TRUE(body.value("status", false));
+  ASSERT_FALSE(body.value("pin_stdin", true));
+}
+
+// Test: confighttp::getConfig() reports pin_stdin=true when the flag is set
+TEST_F(ConfigHttpTest, GetConfigReportsPinStdinEnabled) {
+  config::sunshine.flags[config::flag::PIN_STDIN] = true;
+
+  SimpleWeb::CaseInsensitiveMultimap headers;
+  headers.emplace("Authorization", create_auth_header("testuser", "testpass"));
+
+  const auto response = client->request("GET", "/config-test", "", headers);
+  ASSERT_EQ(response->status_code, "200 OK");
+
+  const auto body = nlohmann::json::parse(response->content.string());
+  ASSERT_TRUE(body.value("status", false));
+  ASSERT_TRUE(body.value("pin_stdin", false));
 }
 
 /**
