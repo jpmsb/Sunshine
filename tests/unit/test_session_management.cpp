@@ -46,6 +46,13 @@ TEST(SessionManagementTest, FormatClientNotificationBodyZeroPort) {
   );
 }
 
+TEST(SessionManagementTest, FormatPairingRequestNotificationBody) {
+  EXPECT_EQ(
+    stream::session::format_pairing_request_notification_body("192.168.1.10", 47984, "Click here to enter the PIN."),
+    "IP: 192.168.1.10\nPort: 47984\nClick here to enter the PIN."
+  );
+}
+
 TEST(SessionManagementTest, GetClientMetadataByCertUnknown) {
   const auto metadata = nvhttp::get_client_metadata_by_cert("unknown-cert");
   EXPECT_TRUE(metadata.uuid.empty());
