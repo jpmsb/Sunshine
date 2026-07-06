@@ -441,6 +441,24 @@
     "vigembus_outdated_title": "ViGEmBus Driver Outdated",
     "welcome": "Hello, Sunshine!"
   },
+  "devices": {
+    "title": "Devices",
+    "description": "Manage connected streams and paired Moonlight clients.",
+    "connected_title": "Connected",
+    "connected_desc": "Devices currently receiving a stream.",
+    "paired_title": "Paired Devices",
+    "paired_desc": "Moonlight clients authorized to connect to this host.",
+    "name": "Name",
+    "address": "IP Address",
+    "port": "Port",
+    "paired_at": "Paired",
+    "enabled": "Enabled",
+    "unpair": "Unpair",
+    "save_name": "Save",
+    "save_name_success": "Device name saved.",
+    "save_name_error": "Could not save the device name.",
+    "unknown_pairing_date": "Unknown"
+  },
   "navbar": {
     "applications": "Applications",
     "configuration": "Configuration",
@@ -449,6 +467,7 @@
     "logout": "Log Out",
     "password": "Change Password",
     "pin": "PIN",
+    "devices": "Devices",
     "theme_alucard": "Alucard",
     "theme_auto": "Auto",
     "theme_dark": "Dark",
