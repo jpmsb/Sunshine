@@ -28,21 +28,21 @@ TEST(SessionManagementTest, FormatSessionLabelWithoutName) {
 TEST(SessionManagementTest, FormatClientNotificationBodyWithName) {
   EXPECT_EQ(
     stream::session::format_client_notification_body("192.168.1.10", 47998, "Phone"),
-    "Nome: Phone\nIP: 192.168.1.10\nPorta: 47998"
+    "Name: Phone\nIP: 192.168.1.10\nPort: 47998"
   );
 }
 
 TEST(SessionManagementTest, FormatClientNotificationBodyWithoutName) {
   EXPECT_EQ(
     stream::session::format_client_notification_body("192.168.1.10", 47998, ""),
-    "IP: 192.168.1.10\nPorta: 47998"
+    "IP: 192.168.1.10\nPort: 47998"
   );
 }
 
 TEST(SessionManagementTest, FormatClientNotificationBodyZeroPort) {
   EXPECT_EQ(
     stream::session::format_client_notification_body("192.168.1.10", 0, ""),
-    "IP: 192.168.1.10\nPorta: 0"
+    "IP: 192.168.1.10\nPort: 0"
   );
 }
 
