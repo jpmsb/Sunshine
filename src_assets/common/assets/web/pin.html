@@ -9,7 +9,19 @@
   <Navbar></Navbar>
   <div id="content" class="container">
     <h1 class="my-4 text-center">{{ $t('pin.pin_pairing') }}</h1>
-    <form class="form d-flex flex-column align-items-center" id="form" @submit.prevent="registerDevice">
+    <div v-if="!configLoaded" class="text-center text-muted my-4">
+      {{ $t('_common.loading') }}
+    </div>
+    <div v-else-if="pinStdin" class="d-flex flex-column align-items-center">
+      <div class="card flex-column d-flex p-4 mb-4 w-100" style="max-width: 36rem;">
+        <div class="alert alert-info mb-0" role="alert">
+          <h2 class="h5 alert-heading">{{ $t('pin.stdin_title') }}</h2>
+          <p class="mb-2">{{ $t('pin.stdin_msg') }}</p>
+          <p class="mb-0"><em>{{ $t('pin.stdin_hint') }}</em></p>
+        </div>
+      </div>
+    </div>
+    <form v-else class="form d-flex flex-column align-items-center" id="form" @submit.prevent="registerDevice">
       <div class="card flex-column d-flex p-4 mb-4">
         <div class="input-group mt-2">
           <span class="input-group-text">
@@ -55,6 +67,23 @@
       Monitor,
     },
     inject: ['i18n'],
+    data() {
+      return {
+        pinStdin: false,
+        configLoaded: false,
+      }
+    },
+    mounted() {
+      fetch("./api/config")
+        .then((response) => response.json())
+        .then((config) => {
+          this.pinStdin = config.pin_stdin === true
+          this.configLoaded = true
+        })
+        .catch(() => {
+          this.configLoaded = true
+        })
+    },
     methods: {
       registerDevice(e) {
         let pin = document.querySelector("#pin-input").value;
