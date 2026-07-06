@@ -510,6 +510,11 @@ namespace nvhttp {
 
   void remove_session(const pair_session_t &sess) {
     map_id_sess.erase(sess.client.uniqueID);
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+    if (map_id_sess.empty()) {
+      system_tray::clear_pairing_request_state();
+    }
+#endif
   }
 
   /**
@@ -782,6 +787,8 @@ namespace nvhttp {
     print_req<T>(request);
     prune_pair_sessions();
 
+    const auto args = request->parse_query_string();
+
     pt::ptree tree;
 
     auto fg = util::fail_guard([&]() {
@@ -792,7 +799,6 @@ namespace nvhttp {
       response->close_connection_after_response = true;
     });
 
-    auto args = request->parse_query_string();
     if (args.find("uniqueid"s) == std::end(args)) {
       tree.put("root.<xmlattr>.status_code", 400);
       tree.put("root.<xmlattr>.status_message", "Missing uniqueid parameter");
@@ -824,6 +830,9 @@ namespace nvhttp {
         auto ptr = map_id_sess.insert_or_assign(sess.client.uniqueID, std::move(sess)).first;
 
         ptr->second.async_insert_pin.salt = std::move(get_arg(args, "salt"));
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+        system_tray::notify_pairing_request(client_address, static_cast<uint16_t>(config::sunshine.port + PORT_HTTPS));
+#endif
         if (config::sunshine.flags[config::flag::PIN_STDIN]) {
           std::string pin;
 
@@ -833,9 +842,6 @@ namespace nvhttp {
           getservercert(ptr->second, tree, pin);
           return;
         } else {
-#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
-          system_tray::update_tray_require_pin();
-#endif
           ptr->second.async_insert_pin.response = std::move(response);
 
           fg.disable();
