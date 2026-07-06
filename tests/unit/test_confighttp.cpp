@@ -31,6 +31,7 @@
 #include <src/crypto.h>
 #include <src/httpcommon.h>
 #include <src/network.h>
+#include <src/nvhttp.h>
 #include <src/utility.h>
 
 using namespace std::literals;
@@ -108,6 +109,7 @@ protected:
   std::filesystem::path cert_file;
   std::filesystem::path key_file;
   std::filesystem::path web_dir_test_file;
+  std::string saved_file_state;
 
   void SetUp() override {
     BaseTest::SetUp();
@@ -118,6 +120,7 @@ protected:
     saved_locale = config::sunshine.locale;
     saved_pin_stdin = config::sunshine.flags.test(config::flag::PIN_STDIN);
     saved_csrf_allowed_origins = config::sunshine.csrf_allowed_origins;
+    saved_file_state = config::nvhttp.file_state;
 
     // Set up test credentials
     config::sunshine.username = "testuser";
@@ -313,6 +316,14 @@ protected:
       confighttp::getConfig(response, request);
     };
 
+    // Add a route to test updateClient
+    server->resource["^/update-client-test$"]["POST"] = [](
+                                                          const std::shared_ptr<SimpleWeb::ServerBase<SimpleWeb::HTTPS>::Response> &response,
+                                                          const std::shared_ptr<SimpleWeb::ServerBase<SimpleWeb::HTTPS>::Request> &request
+                                                        ) {
+      confighttp::updateClient(response, request);
+    };
+
     // Add a route to test browseDirectory
     server->resource["^/browse-test$"]["GET"] = [](
                                                   const std::shared_ptr<SimpleWeb::ServerBase<SimpleWeb::HTTPS>::Response> &response,
@@ -359,6 +370,8 @@ protected:
     config::sunshine.locale = saved_locale;
     config::sunshine.flags[config::flag::PIN_STDIN] = saved_pin_stdin;
     config::sunshine.csrf_allowed_origins = saved_csrf_allowed_origins;
+    config::nvhttp.file_state = saved_file_state;
+    nvhttp::erase_all_clients();
 
     // Clean up test HTML file from the web assets directory
     if (std::filesystem::exists(web_dir_test_file)) {
@@ -780,6 +793,50 @@ TEST_F(ConfigHttpTest, GetConfigReportsPinStdinEnabled) {
   const auto body = nlohmann::json::parse(response->content.string());
   ASSERT_TRUE(body.value("status", false));
   ASSERT_TRUE(body.value("pin_stdin", false));
+}
+
+// Test: confighttp::updateClient() renames a paired client
+TEST_F(ConfigHttpTest, UpdateClientWithNameReturnsSuccess) {
+  const auto temp_state_file = std::filesystem::temp_directory_path() / "sunshine_test_confighttp_state.json";  // NOSONAR(cpp:S5443) - safe for tests
+  if (std::filesystem::exists(temp_state_file)) {
+    std::filesystem::remove(temp_state_file);
+  }
+  config::nvhttp.file_state = temp_state_file.string();
+  nvhttp::erase_all_clients();
+
+  constexpr auto test_uuid = "4D7BB2DD-5704-A405-B41C-891A022932F1";
+  ASSERT_TRUE(nvhttp::test_insert_client({
+    .name = "Phone",
+    .uuid = test_uuid,
+  }));
+
+  SimpleWeb::CaseInsensitiveMultimap auth_headers;
+  auth_headers.emplace("Authorization", create_auth_header("testuser", "testpass"));
+
+  const auto token_response = client->request("GET", "/csrf-token-test", "", auth_headers);
+  ASSERT_EQ(token_response->status_code, "200 OK");
+  const auto token_json = nlohmann::json::parse(token_response->content.string());
+  const std::string csrf_token = token_json["csrf_token"].get<std::string>();
+
+  SimpleWeb::CaseInsensitiveMultimap headers;
+  headers.emplace("Authorization", create_auth_header("testuser", "testpass"));
+  headers.emplace("X-CSRF-Token", csrf_token);
+  headers.emplace("Content-Type", "application/json");
+
+  const std::string body = std::format(R"({{"uuid":"{}","name":"Living Room TV"}})", test_uuid);
+  const auto response = client->request("POST", "/update-client-test", body, headers);
+  ASSERT_EQ(response->status_code, "200 OK");
+
+  const auto response_json = nlohmann::json::parse(response->content.string());
+  EXPECT_TRUE(response_json.value("status", false));
+
+  const auto clients = nvhttp::get_all_clients();
+  ASSERT_EQ(clients.size(), 1);
+  EXPECT_EQ(clients[0]["name"], "Living Room TV");
+
+  if (std::filesystem::exists(temp_state_file)) {
+    std::filesystem::remove(temp_state_file);
+  }
 }
 
 /**
