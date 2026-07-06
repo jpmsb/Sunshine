@@ -19,6 +19,7 @@
 
 // local includes
 #include "assets_path.h"
+#include "localization.h"
 #include "confighttp.h"
 #include "display_device.h"
 #include "entry_handler.h"
@@ -225,6 +226,7 @@ int main(int argc, char *argv[]) {
   BOOST_LOG(info) << PROJECT_NAME << " version: " << PROJECT_VERSION << " commit: " << PROJECT_VERSION_COMMIT;
 
   assets_path::init();
+  localization::init();
 
   if (config::sunshine.flags[config::flag::PIN_STDIN]) {
     BOOST_LOG(warning)
