@@ -497,6 +497,9 @@
     "pair_success": "Success! Please check Moonlight to continue",
     "pin_pairing": "PIN Pairing",
     "send": "Send",
+    "stdin_hint": "Look for \"Please insert pin:\" in the terminal where Sunshine is running.",
+    "stdin_msg": "Sunshine was started with the -0 flag. Enter the PIN shown in Moonlight in the Sunshine terminal. Web UI pairing is unavailable in this mode.",
+    "stdin_title": "Terminal pairing mode",
     "warning_msg": "Make sure you have access to the client you are pairing with. This software can give total control to your computer, so be careful!"
   },
   "resource_card": {
