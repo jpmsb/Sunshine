@@ -154,6 +154,8 @@ namespace system_tray {
     refresh_menu,
     notify_connected,
     notify_disconnected,
+    notify_paused,
+    notify_resumed,
     set_streaming_active,
     set_pausing_icon,
     update_pausing,
@@ -195,6 +197,7 @@ namespace system_tray {
   static std::string tray_icon_playing;
   static std::string tray_icon_pausing;
   static std::string tray_icon_locked;
+  static std::string tray_icon_disconnected;
 
   static struct tray tray = {
     .icon = nullptr,
@@ -209,6 +212,7 @@ namespace system_tray {
   #define TRAY_ICON_PLAYING tray_icon_playing.c_str()
   #define TRAY_ICON_PAUSING tray_icon_pausing.c_str()
   #define TRAY_ICON_LOCKED tray_icon_locked.c_str()
+  #define TRAY_ICON_DISCONNECTED tray_icon_disconnected.c_str()
 
   /**
    * @brief Clear notification fields so tray_update does not re-show stale notifications.
@@ -249,16 +253,19 @@ namespace system_tray {
     tray_icon_playing = web + "images/sunshine-playing.ico";
     tray_icon_pausing = web + "images/sunshine-pausing.ico";
     tray_icon_locked = web + "images/sunshine-locked.ico";
+    tray_icon_disconnected = web + "images/sunshine-disconnected.ico";
   #elif defined(__APPLE__) || defined(__MACH__)
     tray_icon_default = web + "images/logo-sunshine-16.png";
     tray_icon_playing = web + "images/sunshine-playing-16.png";
     tray_icon_pausing = web + "images/sunshine-pausing-16.png";
     tray_icon_locked = web + "images/sunshine-locked-16.png";
+    tray_icon_disconnected = web + "images/sunshine-disconnected-16.png";
   #else
     tray_icon_default = pick_tray_icon_path(web, {"images/logo-sunshine.svg", "images/sunshine-playing.svg", "images/logo-sunshine-45.png"}, "images/sunshine-playing.svg");
     tray_icon_playing = pick_tray_icon_path(web, {"images/sunshine-playing.svg", "images/sunshine-playing-45.png"}, "images/sunshine-playing.svg");
     tray_icon_pausing = pick_tray_icon_path(web, {"images/sunshine-pausing.svg", "images/sunshine-pausing-45.png"}, "images/sunshine-pausing.svg");
     tray_icon_locked = pick_tray_icon_path(web, {"images/sunshine-locked.svg", "images/sunshine-locked-45.png"}, "images/sunshine-locked.svg");
+    tray_icon_disconnected = pick_tray_icon_path(web, {"images/sunshine-disconnected.svg", "images/sunshine-disconnected-45.png"}, "images/sunshine-disconnected.svg");
   #endif
 
     tray.allIconPaths[0] = tray_icon_default.c_str();
@@ -376,11 +383,25 @@ namespace system_tray {
     tray.menu = tray_root_menu.data();
   }
 
+  static const char *tray_icon_for_active_sessions(const std::vector<rtsp_stream::active_session_info_t> &sessions) {
+    if (sessions.empty()) {
+      return TRAY_ICON;
+    }
+
+    for (const auto &session : sessions) {
+      if (session.paused) {
+        return TRAY_ICON_PAUSING;
+      }
+    }
+
+    return TRAY_ICON_PLAYING;
+  }
+
   static void apply_refresh_connected_clients_menu() {
     const std::lock_guard lock {tray_menu_mutex};
     const auto sessions = rtsp_stream::list_active_sessions();
     rebuild_tray_root_menu();
-    tray.icon = sessions.empty() ? TRAY_ICON : TRAY_ICON_PLAYING;
+    tray.icon = tray_icon_for_active_sessions(sessions);
     clear_tray_notification_fields();
     tray_update(&tray);
   }
@@ -409,7 +430,37 @@ namespace system_tray {
     tray.icon = TRAY_ICON;
     tray.notification_title = "Client Disconnected";
     tray.notification_text = notification_body.c_str();
-    tray.notification_icon = TRAY_ICON;
+    tray.notification_icon = TRAY_ICON_DISCONNECTED;
+    tray_update(&tray);
+
+    clear_tray_notification_fields();
+  }
+
+  static void apply_notify_client_paused(const std::string &body) {
+    clear_tray_notification_fields();
+    tray_update(&tray);
+
+    static std::string notification_body;
+    notification_body = body;
+    tray.icon = TRAY_ICON_PAUSING;
+    tray.notification_title = "Client Paused";
+    tray.notification_text = notification_body.c_str();
+    tray.notification_icon = TRAY_ICON_PAUSING;
+    tray_update(&tray);
+
+    clear_tray_notification_fields();
+  }
+
+  static void apply_notify_client_resumed(const std::string &body) {
+    clear_tray_notification_fields();
+    tray_update(&tray);
+
+    static std::string notification_body;
+    notification_body = body;
+    tray.icon = TRAY_ICON_PLAYING;
+    tray.notification_title = "Client Resumed";
+    tray.notification_text = notification_body.c_str();
+    tray.notification_icon = TRAY_ICON_PLAYING;
     tray_update(&tray);
 
     clear_tray_notification_fields();
@@ -440,6 +491,14 @@ namespace system_tray {
           break;
         case tray_pending_kind_e::notify_disconnected:
           apply_notify_client_disconnected(item.text);
+          apply_refresh_connected_clients_menu();
+          break;
+        case tray_pending_kind_e::notify_paused:
+          apply_notify_client_paused(item.text);
+          apply_refresh_connected_clients_menu();
+          break;
+        case tray_pending_kind_e::notify_resumed:
+          apply_notify_client_resumed(item.text);
           apply_refresh_connected_clients_menu();
           break;
         case tray_pending_kind_e::set_streaming_active:
@@ -688,6 +747,20 @@ namespace system_tray {
   void notify_client_disconnected(const std::string &name, const std::string &address, uint16_t port) {
     enqueue_tray_update(
       tray_pending_kind_e::notify_disconnected,
+      stream::session::format_client_notification_body(address, port, name)
+    );
+  }
+
+  void notify_client_paused(const std::string &name, const std::string &address, uint16_t port) {
+    enqueue_tray_update(
+      tray_pending_kind_e::notify_paused,
+      stream::session::format_client_notification_body(address, port, name)
+    );
+  }
+
+  void notify_client_resumed(const std::string &name, const std::string &address, uint16_t port) {
+    enqueue_tray_update(
+      tray_pending_kind_e::notify_resumed,
       stream::session::format_client_notification_body(address, port, name)
     );
   }
