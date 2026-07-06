@@ -124,6 +124,7 @@ namespace nvhttp {
 
     std::chrono::steady_clock::time_point created_at = std::chrono::steady_clock::now();  ///< Time this pairing session was created.
     std::string client_address = {};  ///< Normalized remote address that initiated pairing.
+    uint16_t client_remote_port = 0;  ///< Remote TCP port used during HTTP pairing.
   };
 
   /**
@@ -226,6 +227,26 @@ namespace nvhttp {
    * @return true if the client was found and updated.
    */
   bool set_client_enabled(std::string_view uuid, bool enabled);
+
+  /**
+   * @brief Rename a paired client.
+   *
+   * @param uuid Client UUID to update.
+   * @param name New display name (1-128 characters).
+   * @return True when the client was found and renamed.
+   */
+  bool set_client_name(std::string_view uuid, std::string_view name);
+
+  /**
+   * @brief Update the last known network endpoint for a paired client.
+   *
+   * @param uuid Client UUID to update.
+   * @param address Last known client IP address.
+   * @param port Last known client RTSP port (0 leaves the stored port unchanged).
+   * @return True when the client was found and updated.
+   */
+  bool touch_client_endpoint(std::string_view uuid, const std::string &address, uint16_t port);
+
   /**
    * @brief Get cert by UUID.
    *
@@ -266,4 +287,31 @@ namespace nvhttp {
    * @examples_end
    */
   void erase_all_clients();
+
+#ifdef SUNSHINE_TESTS
+  /**
+   * @brief Seed data used to insert a paired client during unit tests.
+   */
+  struct test_client_seed_t {
+    std::string name;  ///< Human-readable client name.
+    std::string uuid;  ///< Client UUID.
+    std::string cert = "test-cert";  ///< PEM certificate placeholder.
+    std::string paired_at;  ///< Optional ISO 8601 pairing timestamp.
+    std::string last_address;  ///< Optional last known client address.
+    uint16_t last_port = 0;  ///< Optional last known client port.
+  };
+
+  /**
+   * @brief Insert a paired client entry for unit tests.
+   *
+   * @param seed Client metadata to insert.
+   * @return True when the entry was inserted.
+   */
+  bool test_insert_client(const test_client_seed_t &seed);
+
+  /**
+   * @brief Persist and reload paired clients from disk for unit tests.
+   */
+  void test_reload_clients_from_disk();
+#endif
 }  // namespace nvhttp
