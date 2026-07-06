@@ -2266,6 +2266,18 @@ namespace stream {
     }
 
     /**
+     * @brief Build a multiline notification body for an incoming pairing request.
+     */
+    std::string format_pairing_request_notification_body(const std::string &address, uint16_t port, const std::string &action_line) {
+      auto body = format_client_notification_body(address, port, "");
+      if (!action_line.empty()) {
+        body += '\n';
+        body += action_line;
+      }
+      return body;
+    }
+
+    /**
      * @brief Stop the active streaming session and prevent new packets from being queued.
      */
     void stop(session_t &session) {
