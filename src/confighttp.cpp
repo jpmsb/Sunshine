@@ -885,6 +885,8 @@ namespace confighttp {
    * @param response The HTTP response object.
    * @param request The HTTP request object.
    *
+   * Each entry includes `name`, `uuid`, `enabled`, `paired_at`, `last_address`, and `last_port`.
+   *
    * @api_examples{/api/clients/list| GET| null}
    */
   void getClients(const resp_https_t &response, const req_https_t &request) {
@@ -1141,13 +1143,17 @@ namespace confighttp {
    * @code{.json}
    * {
    *   "uuid": "<uuid>",
-   *   "enabled": true
+   *   "enabled": true,
+   *   "name": "Living Room TV"
    * }
    * @endcode
    *
+   * Either `enabled` or `name` must be present. When both are provided, both fields are updated.
+   *
    * @api_examples{/api/clients/update| POST| {"uuid":"<uuid>","enabled":true}}
+   * @api_examples{/api/clients/update| POST| {"uuid":"<uuid>","name":"Living Room TV"}}
    */
-  void updateClient(resp_https_t response, req_https_t request) {
+  void updateClient(const resp_https_t &response, const req_https_t &request) {
     if (!check_content_type(response, request, "application/json")) {
       return;
     }
@@ -1167,20 +1173,37 @@ namespace confighttp {
       nlohmann::json input_tree = nlohmann::json::parse(ss.str());
       nlohmann::json output_tree;
       std::string uuid = input_tree.value("uuid", "");
-      bool enabled = input_tree.value("enabled", true);
-      output_tree["status"] = nvhttp::set_client_enabled(uuid, enabled);
+      const bool has_enabled = input_tree.contains("enabled");
+      const bool has_name = input_tree.contains("name");
 
-      if (!enabled && output_tree["status"]) {
-        auto cert = nvhttp::get_cert_by_uuid(uuid);
-        if (!cert.empty()) {
-          rtsp_stream::terminate_sessions_by_cert(cert);
-        }
+      if (uuid.empty() || (!has_enabled && !has_name)) {
+        output_tree["status"] = false;
+        send_response(response, output_tree);
+        return;
+      }
 
-        if (rtsp_stream::session_count() == 0 && proc::proc.running() > 0) {
-          proc::proc.terminate();
+      bool status = true;
+      if (has_name) {
+        status = nvhttp::set_client_name(uuid, input_tree["name"].get<std::string>());
+      }
+
+      if (has_enabled && status) {
+        const bool enabled = input_tree["enabled"].get<bool>();
+        status = nvhttp::set_client_enabled(uuid, enabled);
+
+        if (!enabled && status) {
+          auto cert = nvhttp::get_cert_by_uuid(uuid);
+          if (!cert.empty()) {
+            rtsp_stream::terminate_sessions_by_cert(cert);
+          }
+
+          if (rtsp_stream::session_count() == 0 && proc::proc.running() > 0) {
+            proc::proc.terminate();
+          }
         }
       }
 
+      output_tree["status"] = status;
       send_response(response, output_tree);
     } catch (nlohmann::json::exception &e) {
       BOOST_LOG(warning) << "Update Client: "sv << e.what();
@@ -2059,7 +2082,10 @@ namespace confighttp {
     // web pages
     server.resource["^/$"]["GET"] = page_handler("index.html");
     server.resource["^/apps/?$"]["GET"] = page_handler("apps.html");
-    server.resource["^/clients/?$"]["GET"] = page_handler("clients.html");
+    server.resource["^/clients/?$"]["GET"] = [](const resp_https_t &response, const req_https_t &request) {
+      send_redirect(response, request, "/devices");
+    };
+    server.resource["^/devices/?$"]["GET"] = page_handler("devices.html");
     server.resource["^/config/?$"]["GET"] = page_handler("config.html");
     server.resource["^/featured/?$"]["GET"] = page_handler("featured.html");
     server.resource["^/logout/?$"]["GET"] = page_handler("logout.html", false);
