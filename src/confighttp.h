@@ -67,6 +67,7 @@ namespace confighttp {
   void getAsset(const resp_https_t &response, const req_https_t &request);
   void browseDirectory(const resp_https_t &response, const req_https_t &request);
   void getLocale(const resp_https_t &response, const req_https_t &request);
+  void getConfig(const resp_https_t &response, const req_https_t &request);
   void getCSRFToken(const resp_https_t &response, const req_https_t &request);
 
   // Browse helper functions (also exposed for unit testing)
