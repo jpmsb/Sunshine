@@ -24,6 +24,12 @@
               </a>
             </li>
             <li class="nav-item">
+              <a class="nav-link" href="./devices">
+                <Smartphone :size="18" class="icon"></Smartphone>
+                {{ $t('navbar.devices') }}
+              </a>
+            </li>
+            <li class="nav-item">
               <a class="nav-link" href="./apps">
                 <Layers :size="18" class="icon"></Layers>
                 {{ $t('navbar.applications') }}
@@ -82,7 +88,7 @@
 </template>
 
 <script>
-import { CircleUserRound, Home, Info, Layers, Lock, LogOut, Settings, Shield, Star } from '@lucide/vue'
+import { CircleUserRound, Home, Info, Layers, Lock, LogOut, Settings, Shield, Smartphone, Star } from '@lucide/vue'
 import ThemeToggle from './ThemeToggle.vue'
 import Notification from './Notification.vue'
 
@@ -92,6 +98,7 @@ export default {
     Notification,
     Home,
     Lock,
+    Smartphone,
     Layers,
     Star,
     Settings,
