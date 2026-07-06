@@ -100,6 +100,24 @@ namespace system_tray {
   void notify_client_disconnected(const std::string &name, const std::string &address, uint16_t port);
 
   /**
+   * @brief Show a desktop notification when a connected client is paused.
+   *
+   * @param name Optional paired client name.
+   * @param address Normalized client IP address.
+   * @param port Client control port.
+   */
+  void notify_client_paused(const std::string &name, const std::string &address, uint16_t port);
+
+  /**
+   * @brief Show a desktop notification when a paused client is resumed.
+   *
+   * @param name Optional paired client name.
+   * @param address Normalized client IP address.
+   * @param port Client control port.
+   */
+  void notify_client_resumed(const std::string &name, const std::string &address, uint16_t port);
+
+  /**
    * @brief Rebuild the connected-clients submenu in the system tray.
    */
   void refresh_connected_clients_menu();
