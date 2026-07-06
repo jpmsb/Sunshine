@@ -134,7 +134,7 @@ namespace system_tray {
   struct tray_session_action_t {
     uint32_t session_id;  ///< Launch-session identifier for the target stream.
     /**
-     * @brief Tray action performed when a connected-client submenu item is selected.
+     * @brief Tray action performed when a connected-client menu item is selected.
      */
     enum class type_e {
       pause,  ///< Pause the target session.
@@ -146,7 +146,6 @@ namespace system_tray {
   static std::mutex tray_menu_mutex;
   static std::vector<std::string> tray_menu_strings;
   static std::vector<std::vector<tray_menu>> tray_session_submenus;
-  static std::vector<tray_menu> tray_connected_clients_submenu;
   static std::vector<tray_menu> tray_root_menu;
   static std::vector<std::unique_ptr<tray_session_action_t>> tray_session_action_contexts;
 
@@ -320,13 +319,23 @@ namespace system_tray {
   void rebuild_tray_root_menu() {
     tray_menu_strings.clear();
     tray_session_submenus.clear();
-    tray_connected_clients_submenu.clear();
     tray_session_action_contexts.clear();
+    tray_root_menu.clear();
 
     const auto sessions = rtsp_stream::list_active_sessions();
+
+    tray_root_menu.push_back({.text = "Open Sunshine", .cb = tray_open_ui_cb});
+    tray_root_menu.push_back({.text = "-"});
+
+    tray_menu_strings.emplace_back("Connected Clients");
+    tray_root_menu.push_back({
+      .text = tray_menu_strings.back().c_str(),
+      .disabled = 1,
+    });
+
     if (sessions.empty()) {
       tray_menu_strings.emplace_back("(No clients connected)");
-      tray_connected_clients_submenu.push_back({
+      tray_root_menu.push_back({
         .text = tray_menu_strings.back().c_str(),
         .disabled = 1,
       });
@@ -356,29 +365,22 @@ namespace system_tray {
         );
         submenu.push_back({.text = nullptr});
 
-        tray_connected_clients_submenu.push_back({
+        tray_root_menu.push_back({
           .text = tray_menu_strings[label_index].c_str(),
           .submenu = submenu.data(),
         });
       }
     }
 
-    tray_connected_clients_submenu.push_back({.text = nullptr});
-
-    tray_root_menu = {
-      {.text = "Open Sunshine", .cb = tray_open_ui_cb},
-      {.text = "-"},
-      {.text = "Connected Clients", .submenu = tray_connected_clients_submenu.data()},
-      {.text = "-"},
-      {.text = "Donate", .submenu = tray_donate_submenu},
-      {.text = "-"},
+    tray_root_menu.push_back({.text = "-"});
+    tray_root_menu.push_back({.text = "Donate", .submenu = tray_donate_submenu});
+    tray_root_menu.push_back({.text = "-"});
   #ifdef _WIN32
-      {.text = "Reset Display Device Config", .cb = tray_reset_display_device_config_cb},
+    tray_root_menu.push_back({.text = "Reset Display Device Config", .cb = tray_reset_display_device_config_cb});
   #endif
-      {.text = "Restart", .cb = tray_restart_cb},
-      {.text = "Quit", .cb = tray_quit_cb},
-      {.text = nullptr},
-    };
+    tray_root_menu.push_back({.text = "Restart", .cb = tray_restart_cb});
+    tray_root_menu.push_back({.text = "Quit", .cb = tray_quit_cb});
+    tray_root_menu.push_back({.text = nullptr});
 
     tray.menu = tray_root_menu.data();
   }
