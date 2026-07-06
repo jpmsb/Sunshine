@@ -11,6 +11,8 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -163,6 +165,9 @@ namespace nvhttp {
     std::string uuid;  ///< Persistent Moonlight client UUID associated with the certificate.
     std::string cert;  ///< Certificate PEM string or path.
     bool enabled = true;  ///< Whether this persisted client entry may connect.
+    std::string paired_at;  ///< ISO 8601 UTC timestamp recorded when pairing completed.
+    std::string last_address;  ///< Last known client IP address.
+    uint16_t last_port = 0;  ///< Last known client RTSP port (0 when unknown).
   };
 
   /**
@@ -183,6 +188,26 @@ namespace nvhttp {
   constexpr auto PAIR_SESSION_TIMEOUT = std::chrono::minutes(5);  ///< Maximum lifetime of an in-progress pairing session.
   constexpr std::size_t MAX_PAIR_SESSIONS = 16;  ///< Maximum concurrent pairing sessions.
   constexpr std::size_t MAX_PAIR_SESSIONS_PER_ADDRESS = 3;  ///< Maximum pairing sessions per remote address.
+  constexpr std::size_t MAX_CLIENT_NAME_LENGTH = 128;  ///< Maximum length for a paired client display name.
+
+  /**
+   * @brief Return the current UTC time formatted as ISO 8601.
+   *
+   * @return Timestamp string in `YYYY-MM-DDTHH:MM:SSZ` format.
+   */
+  std::string current_utc_iso8601() {
+    const auto now = std::chrono::system_clock::now();
+    const auto time = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_buf {};
+#ifdef _WIN32
+    gmtime_s(&tm_buf, &time);
+#else
+    gmtime_r(&time, &tm_buf);
+#endif
+    std::ostringstream oss;
+    oss << std::put_time(&tm_buf, "%Y-%m-%dT%H:%M:%SZ");
+    return oss.str();
+  }
 
   /**
    * @brief Return whether a pairing session is waiting for a PIN response.
@@ -343,6 +368,11 @@ namespace nvhttp {
       named_cert_node.put("cert"s, named_cert.cert);
       named_cert_node.put("uuid"s, named_cert.uuid);
       named_cert_node.put("enabled"s, named_cert.enabled);
+      if (!named_cert.paired_at.empty()) {
+        named_cert_node.put("paired_at"s, named_cert.paired_at);
+      }
+      named_cert_node.put("last_address"s, named_cert.last_address);
+      named_cert_node.put("last_port"s, named_cert.last_port);
       named_cert_nodes.push_back(std::make_pair(""s, named_cert_node));
     }
     root.add_child("root.named_devices"s, named_cert_nodes);
@@ -410,6 +440,9 @@ namespace nvhttp {
         named_cert.cert = el.get_child("cert").get_value<std::string>();
         named_cert.uuid = el.get_child("uuid").get_value<std::string>();
         named_cert.enabled = el.get<bool>("enabled", true);
+        named_cert.paired_at = el.get<std::string>("paired_at", ""s);
+        named_cert.last_address = el.get<std::string>("last_address", ""s);
+        named_cert.last_port = static_cast<uint16_t>(el.get<int>("last_port", 0));
         client.named_devices.emplace_back(named_cert);
       }
     }
@@ -428,13 +461,18 @@ namespace nvhttp {
    *
    * @param name Human-readable name to assign.
    * @param cert Certificate data or object used by the operation.
+   * @param client_address Remote address observed during pairing.
+   * @param client_remote_port Remote TCP port observed during pairing.
    */
-  void add_authorized_client(const std::string &name, std::string &&cert) {
+  void add_authorized_client(const std::string &name, std::string &&cert, const std::string &client_address, uint16_t client_remote_port) {
     client_t &client = client_root;
     named_cert_t named_cert;
     named_cert.name = name;
     named_cert.cert = std::move(cert);
     named_cert.uuid = uuid_util::uuid_t::generate().string();
+    named_cert.paired_at = current_utc_iso8601();
+    named_cert.last_address = client_address;
+    named_cert.last_port = client_remote_port;
     client.named_devices.emplace_back(named_cert);
 
     if (!config::sunshine.flags[config::flag::FRESH_STATE]) {
@@ -697,7 +735,7 @@ namespace nvhttp {
       add_cert->raise(crypto::x509(client.cert));
 
       // The client is now successfully paired and will be authorized to connect
-      add_authorized_client(client.name, std::move(client.cert));
+      add_authorized_client(client.name, std::move(client.cert), sess.client_address, sess.client_remote_port);
     } else {
       tree.put("root.paired", 0);
     }
@@ -824,6 +862,7 @@ namespace nvhttp {
         sess.client.uniqueID = std::move(uniqID);
         sess.client.cert = util::from_hex_vec(get_arg(args, "clientcert"), true);
         sess.client_address = client_address;
+        sess.client_remote_port = request->remote_endpoint().port();
         sess.created_at = std::chrono::steady_clock::now();
 
         BOOST_LOG(debug) << "Pairing client certificate received ("sv << sess.client.cert.size() << " bytes)"sv;
@@ -1082,6 +1121,9 @@ namespace nvhttp {
       named_cert_node["name"] = named_cert.name;
       named_cert_node["uuid"] = named_cert.uuid;
       named_cert_node["enabled"] = named_cert.enabled;
+      named_cert_node["paired_at"] = named_cert.paired_at;
+      named_cert_node["last_address"] = named_cert.last_address;
+      named_cert_node["last_port"] = named_cert.last_port;
       named_cert_nodes.push_back(named_cert_node);
     }
 
@@ -1592,6 +1634,67 @@ namespace nvhttp {
     }
     return false;
   }
+
+  bool set_client_name(const std::string_view uuid, const std::string_view name) {
+    if (name.empty() || name.size() > MAX_CLIENT_NAME_LENGTH) {
+      return false;
+    }
+
+    client_t &client = client_root;
+    for (auto &named_cert : client.named_devices) {
+      if (named_cert.uuid == uuid) {
+        named_cert.name = std::string(name);
+        save_state();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool touch_client_endpoint(const std::string_view uuid, const std::string &address, uint16_t port) {
+    if (uuid.empty()) {
+      return false;
+    }
+
+    client_t &client = client_root;
+    for (auto &named_cert : client.named_devices) {
+      if (named_cert.uuid == uuid) {
+        if (!address.empty()) {
+          named_cert.last_address = address;
+        }
+        if (port != 0) {
+          named_cert.last_port = port;
+        }
+        save_state();
+        return true;
+      }
+    }
+    return false;
+  }
+
+#ifdef SUNSHINE_TESTS
+  bool test_insert_client(const test_client_seed_t &seed) {
+    if (seed.uuid.empty()) {
+      return false;
+    }
+
+    named_cert_t named_cert;
+    named_cert.name = seed.name;
+    named_cert.uuid = seed.uuid;
+    named_cert.cert = seed.cert;
+    named_cert.paired_at = seed.paired_at;
+    named_cert.last_address = seed.last_address;
+    named_cert.last_port = seed.last_port;
+    client_root.named_devices.emplace_back(std::move(named_cert));
+    return true;
+  }
+
+  void test_reload_clients_from_disk() {
+    save_state();
+    client_root.named_devices.clear();
+    load_state();
+  }
+#endif
 
   /**
    * @brief Get cert by UUID.
