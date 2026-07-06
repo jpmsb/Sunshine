@@ -35,7 +35,9 @@
 
   // local includes
   #include "assets_path.h"
+  #include "config.h"
   #include "display_device.h"
+  #include "localization.h"
   #include "logging.h"
   #include "platform/common.h"
   #include "process.h"
@@ -59,6 +61,9 @@ namespace system_tray {
   }
 
   static void tray_pin_notification_cb() {
+    if (config::sunshine.flags.test(config::flag::PIN_STDIN)) {
+      return;
+    }
     launch_ui("/pin");
   }
 
@@ -159,7 +164,8 @@ namespace system_tray {
     set_pausing_icon,
     update_pausing,
     update_stopped,
-    require_pin,
+    notify_pairing,
+    clear_pairing,
   };
 
   struct tray_pending_item_t {
@@ -468,6 +474,35 @@ namespace system_tray {
     clear_tray_notification_fields();
   }
 
+  static void apply_notify_pairing_request(const std::string &body) {
+    clear_tray_notification_fields();
+    tray_update(&tray);
+
+    static std::string notification_title;
+    static std::string notification_body;
+    notification_title = localization::ui_string("troubleshooting", "pairing_request_title");
+    notification_body = body;
+    tray.icon = TRAY_ICON_LOCKED;
+    tray.notification_title = notification_title.c_str();
+    tray.notification_text = notification_body.c_str();
+    tray.notification_icon = TRAY_ICON_LOCKED;
+    tray.tooltip = PROJECT_NAME;
+    if (!config::sunshine.flags.test(config::flag::PIN_STDIN)) {
+      tray.notification_cb = tray_pin_notification_cb;
+    }
+    tray_update(&tray);
+
+    clear_tray_notification_fields();
+  }
+
+  static void apply_clear_pairing_request_state() {
+    const std::lock_guard lock {tray_menu_mutex};
+    const auto sessions = rtsp_stream::list_active_sessions();
+    tray.icon = tray_icon_for_active_sessions(sessions);
+    clear_tray_notification_fields();
+    tray_update(&tray);
+  }
+
   /**
    * @brief Apply tray menu and notification updates on the Qt main thread.
    */
@@ -545,18 +580,11 @@ namespace system_tray {
           clear_tray_notification_fields();
           break;
         }
-        case tray_pending_kind_e::require_pin:
-          clear_tray_notification_fields();
-          tray.icon = TRAY_ICON;
-          tray_update(&tray);
-          tray.icon = TRAY_ICON_LOCKED;
-          tray.notification_title = "Incoming Pairing Request";
-          tray.notification_text = "Click here to complete the pairing process";
-          tray.notification_icon = TRAY_ICON_LOCKED;
-          tray.tooltip = PROJECT_NAME;
-          tray.notification_cb = tray_pin_notification_cb;
-          tray_update(&tray);
-          clear_tray_notification_fields();
+        case tray_pending_kind_e::notify_pairing:
+          apply_notify_pairing_request(item.text);
+          break;
+        case tray_pending_kind_e::clear_pairing:
+          apply_clear_pairing_request_state();
           break;
       }
     }
@@ -783,8 +811,22 @@ namespace system_tray {
     enqueue_tray_update(tray_pending_kind_e::update_stopped, std::move(app_name));
   }
 
-  void update_tray_require_pin() {
-    enqueue_tray_update(tray_pending_kind_e::require_pin);
+  void notify_pairing_request(const std::string &address, uint16_t port) {
+    const auto &action_key = config::sunshine.flags.test(config::flag::PIN_STDIN)
+                               ? "pairing_request_action_stdin"sv
+                               : "pairing_request_action"sv;
+    enqueue_tray_update(
+      tray_pending_kind_e::notify_pairing,
+      stream::session::format_pairing_request_notification_body(
+        address,
+        port,
+        localization::ui_string("troubleshooting", std::string {action_key})
+      )
+    );
+  }
+
+  void clear_pairing_request_state() {
+    enqueue_tray_update(tray_pending_kind_e::clear_pairing);
   }
 
   // Threading functions available on all platforms
