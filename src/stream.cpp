@@ -26,6 +26,7 @@ extern "C" {
 #include "globals.h"
 #include "input.h"
 #include "logging.h"
+#include "localization.h"
 #include "network.h"
 #include "nvhttp.h"
 #include "platform/common.h"
@@ -2251,12 +2252,16 @@ namespace stream {
      * @brief Build a multiline notification body for client connect/disconnect events.
      */
     std::string format_client_notification_body(const std::string &address, uint16_t port, const std::string &name) {
+      const auto name_label = localization::ui_string("troubleshooting", "client_notification_name");
+      const auto ip_label = localization::ui_string("troubleshooting", "client_notification_ip");
+      const auto port_label = localization::ui_string("troubleshooting", "client_notification_port");
+
       std::string body;
       if (!name.empty()) {
-        body += std::format("Nome: {}\n", name);
+        body += std::format("{}: {}\n", name_label, name);
       }
-      body += std::format("IP: {}\n", address);
-      body += std::format("Porta: {}", port);
+      body += std::format("{}: {}\n", ip_label, address);
+      body += std::format("{}: {}", port_label, port);
       return body;
     }
 
