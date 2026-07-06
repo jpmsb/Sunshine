@@ -140,9 +140,17 @@ namespace system_tray {
   void update_tray_stopped(std::string app_name);
 
   /**
-   * @brief Spawns a notification for PIN Pairing. Clicking it opens the PIN Web UI Page
+   * @brief Show a desktop notification when a client requests pairing.
+   *
+   * @param address Normalized client IP address.
+   * @param port HTTPS port used for the pairing request.
    */
-  void update_tray_require_pin();
+  void notify_pairing_request(const std::string &address, uint16_t port);
+
+  /**
+   * @brief Restore the tray icon after all pending pairing sessions end.
+   */
+  void clear_pairing_request_state();
 
   /**
    * @brief Initializes and runs the system tray in a separate thread.
