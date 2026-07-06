@@ -752,7 +752,16 @@ namespace rtsp_stream {
       for (auto &slot_ptr : *_session_slots) {
         auto &slot = *slot_ptr;
         if (stream::session::launch_session_id(slot) == session_id) {
+          const auto endpoint = stream::session::peer_endpoint(slot);
+          const auto metadata = nvhttp::get_client_metadata_by_cert(stream::session::client_cert(slot));
           stream::session::set_paused(slot, paused);
+#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+          if (paused) {
+            system_tray::notify_client_paused(metadata.name, endpoint.first, endpoint.second);
+          } else {
+            system_tray::notify_client_resumed(metadata.name, endpoint.first, endpoint.second);
+          }
+#endif
           BOOST_LOG(info) << "Session "sv << session_id << (paused ? " paused"sv : " resumed"sv);
           return;
         }
