@@ -743,6 +743,9 @@ namespace stream {
             const auto metadata = nvhttp::get_client_metadata_by_cert(session->client_cert);
             const auto label = session::format_session_label(endpoint.first, endpoint.second, metadata.name);
             BOOST_LOG(info) << "CLIENT CONNECTED: "sv << label;
+            if (!metadata.uuid.empty()) {
+              nvhttp::touch_client_endpoint(metadata.uuid, endpoint.first, endpoint.second);
+            }
 #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
             system_tray::notify_client_connected(metadata.name, endpoint.first, endpoint.second);
 #endif
