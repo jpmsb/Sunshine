@@ -1267,6 +1267,10 @@ namespace confighttp {
 
   /**
    * @brief Get the configuration settings.
+   *
+   * The response includes runtime fields in addition to values from the config file:
+   * - `pin_stdin`: true when Sunshine was started with the `-0` flag (PIN is read from stdin).
+   *
    * @param response The HTTP response object.
    * @param request The HTTP request object.
    *
@@ -1283,6 +1287,7 @@ namespace confighttp {
     output_tree["status"] = true;
     output_tree["platform"] = SUNSHINE_PLATFORM;
     output_tree["version"] = PROJECT_VERSION;
+    output_tree["pin_stdin"] = config::sunshine.flags.test(config::flag::PIN_STDIN);
 
     auto vars = config::parse_config(file_handler::read_file(config::sunshine.config_file.c_str()));
 
