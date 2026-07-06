@@ -165,5 +165,15 @@ namespace stream {
      * @return Body formatted with `Nome:`, `IP:`, and `Porta:` lines.
      */
     std::string format_client_notification_body(const std::string &address, uint16_t port, const std::string &name);
+
+    /**
+     * @brief Build a multiline notification body for an incoming pairing request.
+     *
+     * @param address Normalized client IP address.
+     * @param port HTTPS port used for the pairing request.
+     * @param action_line Localized call-to-action shown after the IP and port lines.
+     * @return Body formatted with IP, port, and action lines.
+     */
+    std::string format_pairing_request_notification_body(const std::string &address, uint16_t port, const std::string &action_line);
   }  // namespace session
 }  // namespace stream
