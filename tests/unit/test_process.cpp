@@ -11,6 +11,7 @@
 
 // local imports
 #include <src/assets_path.h>
+#include <src/platform/common.h>
 #include <src/process.h>
 
 namespace fs = std::filesystem;
@@ -186,7 +187,7 @@ TEST_F(ProcessPNGTest, ValidateAppImagePath_NonPNGExtension) {
 
 TEST_F(ProcessPNGTest, ValidateAppImagePath_CaseInsensitiveExtension) {
   // Test that .PNG (uppercase) is recognized
-  // Create a valid PNG file
+  // Create a valid PNG file under the allowed covers directory
   const std::vector<unsigned char> valid_png_data = {
     0x89,
     0x50,
@@ -206,7 +207,9 @@ TEST_F(ProcessPNGTest, ValidateAppImagePath_CaseInsensitiveExtension) {
     0x52
   };
 
-  const fs::path test_file = test_dir / "test.PNG";
+  const fs::path covers_dir = fs::path(platf::appdata()) / "covers";
+  fs::create_directories(covers_dir);
+  const fs::path test_file = covers_dir / "test.PNG";
   createTestFile(test_file, valid_png_data);
 
   const std::string result = proc::validate_app_image_path(test_file.string());
@@ -241,7 +244,7 @@ TEST_F(ProcessPNGTest, ValidateAppImagePath_InvalidPNGSignature) {
 }
 
 TEST_F(ProcessPNGTest, ValidateAppImagePath_ValidPNG) {
-  // Valid PNG file should return the path
+  // Valid PNG file should return the path when it lives under covers/
   const std::vector<unsigned char> valid_png_data = {
     0x89,
     0x50,
@@ -261,11 +264,40 @@ TEST_F(ProcessPNGTest, ValidateAppImagePath_ValidPNG) {
     0x52
   };
 
-  const fs::path test_file = test_dir / "valid.png";
+  const fs::path covers_dir = fs::path(platf::appdata()) / "covers";
+  fs::create_directories(covers_dir);
+  const fs::path test_file = covers_dir / "valid.png";
   createTestFile(test_file, valid_png_data);
 
   const std::string result = proc::validate_app_image_path(test_file.string());
-  EXPECT_EQ(result, test_file.string());
+  EXPECT_EQ(result, fs::weakly_canonical(test_file).string());
+}
+
+TEST_F(ProcessPNGTest, ValidateAppImagePath_OutsideAllowedDirectoryReturnsDefault) {
+  const std::vector<unsigned char> valid_png_data = {
+    0x89,
+    0x50,
+    0x4E,
+    0x47,
+    0x0D,
+    0x0A,
+    0x1A,
+    0x0A,
+    0x00,
+    0x00,
+    0x00,
+    0x0D,
+    0x49,
+    0x48,
+    0x44,
+    0x52
+  };
+
+  const fs::path test_file = test_dir / "outside.png";
+  createTestFile(test_file, valid_png_data);
+
+  const std::string result = proc::validate_app_image_path(test_file.string());
+  EXPECT_EQ(result, proc::default_app_image_path());
 }
 
 TEST_F(ProcessPNGTest, ValidateAppImagePath_OldSteamDefault) {
