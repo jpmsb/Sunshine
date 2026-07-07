@@ -21,7 +21,7 @@
         <li v-for="session in connectedSessions" :key="session.session_id" class="list-group-item">
           <div class="d-flex flex-wrap align-items-center gap-2">
             <div class="flex-grow-1">
-              <div>{{ session.label }}</div>
+              <div>{{ sessionDisplayName(session) }}</div>
               <small class="text-muted">
                 {{ $t('devices.address') }}: {{ session.address || '—' }}
                 · {{ $t('devices.port') }}: {{ session.port || '—' }}
@@ -208,6 +208,24 @@
       },
       activeSessionForClient(uuid) {
         return this.connectedSessions.find((session) => session.uuid === uuid)
+      },
+      sessionDisplayName(session) {
+        const name = (session.name || '').trim()
+        if (name) {
+          return name
+        }
+
+        const label = (session.label || '').trim()
+        const separator = ' - '
+        const separatorIndex = label.lastIndexOf(separator)
+        if (separatorIndex !== -1) {
+          const nickname = label.slice(separatorIndex + separator.length).trim()
+          if (nickname) {
+            return nickname
+          }
+        }
+
+        return this.$t('troubleshooting.unpair_single_unknown')
       },
       clientEndpoint(client) {
         const active = this.activeSessionForClient(client.uuid)
