@@ -547,14 +547,19 @@ namespace proc {
       return default_app_image_path();
     }
 
+    const std::filesystem::path image_path(app_image_path);
+
     // check if image is in assets directory
-    if (auto full_image_path = std::filesystem::path(assets_path::root()) / app_image_path; std::filesystem::exists(full_image_path)) {
-      // Validate PNG signature
-      if (!check_valid_png(full_image_path)) {
-        BOOST_LOG(warning) << "Invalid PNG file at path ["sv << full_image_path << ']';
-        return default_app_image_path();
+    if (!image_path.is_absolute()) {
+      const auto full_image_path = std::filesystem::path(assets_path::root()) / app_image_path;
+      if (std::filesystem::exists(full_image_path)) {
+        // Validate PNG signature
+        if (!check_valid_png(full_image_path)) {
+          BOOST_LOG(warning) << "Invalid PNG file at path ["sv << full_image_path << ']';
+          return default_app_image_path();
+        }
+        return full_image_path.string();
       }
-      return full_image_path.string();
     }
 
     if (app_image_path == "./assets/steam.png") {
@@ -575,9 +580,25 @@ namespace proc {
       return default_app_image_path();
     }
 
-    // image is a png, and not in assets directory
-    // return only "content-type" http header compatible image type
-    return app_image_path;
+    const std::filesystem::path absolute_path = std::filesystem::weakly_canonical(app_image_path);
+    const std::filesystem::path assets_root = std::filesystem::weakly_canonical(std::filesystem::path(assets_path::root()));
+    const std::filesystem::path covers_root = std::filesystem::weakly_canonical(std::filesystem::path(platf::appdata()) / "covers");
+
+    auto is_under_root = [](const std::filesystem::path &path, const std::filesystem::path &root) {
+      std::error_code ec;
+      const auto rel = std::filesystem::relative(path, root, ec);
+      if (ec || rel.empty()) {
+        return path == root;
+      }
+      return rel.begin()->string() != "..";
+    };
+
+    if (is_under_root(absolute_path, assets_root) || is_under_root(absolute_path, covers_root)) {
+      return absolute_path.string();
+    }
+
+    BOOST_LOG(warning) << "App image path outside allowed directories ["sv << app_image_path << ']';
+    return default_app_image_path();
   }
 
   /**
