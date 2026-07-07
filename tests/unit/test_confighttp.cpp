@@ -28,6 +28,7 @@
 #include <src/assets_path.h>
 #include <src/config.h>
 #include <src/confighttp.h>
+#include <src/confighttp_validation.h>
 #include <src/crypto.h>
 #include <src/httpcommon.h>
 #include <src/network.h>
@@ -126,6 +127,9 @@ protected:
     config::sunshine.username = "testuser";
     config::sunshine.salt = "testsalt";
     config::sunshine.password = util::hex(crypto::hash("testpass" + config::sunshine.salt)).to_string();
+
+    confighttp_validation::auth_rate_limit_clear("127.0.0.1");
+    confighttp_validation::auth_rate_limit_clear("::1");
 
     // Set test locale
     config::sunshine.locale = "en";
@@ -324,6 +328,14 @@ protected:
       confighttp::updateClient(response, request);
     };
 
+    // Add a route to test uploadCover
+    server->resource["^/upload-cover-test$"]["POST"] = [](
+                                                        const std::shared_ptr<SimpleWeb::ServerBase<SimpleWeb::HTTPS>::Response> &response,
+                                                        const std::shared_ptr<SimpleWeb::ServerBase<SimpleWeb::HTTPS>::Request> &request
+                                                      ) {
+      confighttp::uploadCover(response, request);
+    };
+
     // Add a route to test browseDirectory
     server->resource["^/browse-test$"]["GET"] = [](
                                                   const std::shared_ptr<SimpleWeb::ServerBase<SimpleWeb::HTTPS>::Response> &response,
@@ -440,6 +452,25 @@ TEST_F(ConfigHttpTest, AuthenticateRejectsInvalidPassword) {
 
   const auto response = client->request("GET", "/auth-test", "", headers);
   ASSERT_EQ(response->status_code, "401 Unauthorized");
+}
+
+// Test: confighttp::authenticate() rate limits repeated failures
+TEST_F(ConfigHttpTest, AuthenticateRateLimitsRepeatedFailures) {
+  SimpleWeb::CaseInsensitiveMultimap bad_headers;
+  bad_headers.emplace("Authorization", create_auth_header("testuser", "wrongpass"));
+
+  for (int i = 0; i < 5; ++i) {
+    const auto response = client->request("GET", "/auth-test", "", bad_headers);
+    ASSERT_EQ(response->status_code, "401 Unauthorized");
+  }
+
+  SimpleWeb::CaseInsensitiveMultimap good_headers;
+  good_headers.emplace("Authorization", create_auth_header("testuser", "testpass"));
+  const auto blocked_response = client->request("GET", "/auth-test", "", good_headers);
+  ASSERT_EQ(blocked_response->status_code, "401 Unauthorized");
+
+  confighttp_validation::auth_rate_limit_clear("127.0.0.1");
+  confighttp_validation::auth_rate_limit_clear("::1");
 }
 
 // Test: confighttp::authenticate() is case-insensitive for username
@@ -647,6 +678,21 @@ TEST_F(ConfigHttpTest, CSRFValidationWithInvalidToken) {
     const std::string body = response->content.string();
     ASSERT_TRUE(body.find("Invalid CSRF token") != std::string::npos);
   }
+}
+
+// Test: uploadCover requires CSRF token for cross-origin requests
+TEST_F(ConfigHttpTest, UploadCoverRejectsMissingCsrfToken) {
+  SimpleWeb::CaseInsensitiveMultimap headers;
+  headers.emplace("Authorization", create_auth_header("testuser", "testpass"));
+  headers.emplace("Content-Type", "application/json");
+  headers.emplace("Origin", "https://evil.example.com");
+
+  const std::string body = R"({"key":"test_cover","data":""})";
+  const auto response = client->request("POST", "/upload-cover-test", body, headers);
+
+  ASSERT_EQ(response->status_code, "400 Bad Request");
+  const std::string response_body = response->content.string();
+  ASSERT_TRUE(response_body.find("Missing CSRF token") != std::string::npos);
 }
 
 // Test: CSRF same-origin exemption with Origin header
@@ -1245,6 +1291,17 @@ TEST_F(BrowseDirectoryTest, BrowseEmptyPathReturnsValidResponse) {
   ASSERT_TRUE(json.contains("entries"));
   ASSERT_TRUE(json["entries"].is_array());
 }
+
+#ifndef _WIN32
+// Test: browseDirectory blocks sensitive system directories
+TEST_F(BrowseDirectoryTest, BrowseBlocksSensitivePath) {
+  SimpleWeb::CaseInsensitiveMultimap headers;
+  headers.emplace("Authorization", create_auth_header("testuser", "testpass"));
+
+  const auto response = client->request("GET", browse_url("/etc"), "", headers);
+  ASSERT_EQ(response->status_code, "403 Forbidden");
+}
+#endif
 
 #ifdef _WIN32
 // Test (Windows): empty/root path returns the list of logical drive letters
