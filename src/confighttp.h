@@ -70,6 +70,7 @@ namespace confighttp {
   void getConfig(const resp_https_t &response, const req_https_t &request);
   void getCSRFToken(const resp_https_t &response, const req_https_t &request);
   void updateClient(const resp_https_t &response, const req_https_t &request);
+  void uploadCover(const resp_https_t &response, const req_https_t &request);
 
   // Browse helper functions (also exposed for unit testing)
   /**
