@@ -33,6 +33,7 @@
 #include "config.h"
 #include "assets_path.h"
 #include "confighttp.h"
+#include "confighttp_validation.h"
 #include "crypto.h"
 #include "display_device.h"
 #include "file_handler.h"
@@ -213,6 +214,12 @@ namespace confighttp {
       return false;
     }
 
+    const auto address = net::addr_to_normalized_string(request->remote_endpoint().address());
+    if (confighttp_validation::auth_rate_limit_is_blocked(address)) {
+      send_unauthorized(response, request);
+      return false;
+    }
+
     // If credentials are shown, redirect the user to a /welcome page
     if (config::sunshine.username.empty()) {
       send_redirect(response, request, "/welcome");
@@ -225,6 +232,7 @@ namespace confighttp {
 
     const auto auth = request->header.find("authorization");
     if (auth == request->header.end()) {
+      confighttp_validation::auth_rate_limit_record_failure(address);
       return false;
     }
 
@@ -233,6 +241,7 @@ namespace confighttp {
 
     const auto index = static_cast<int>(authData.find(':'));
     if (index >= authData.size() - 1) {
+      confighttp_validation::auth_rate_limit_record_failure(address);
       return false;
     }
 
@@ -240,9 +249,11 @@ namespace confighttp {
     const auto password = authData.substr(index + 1);
 
     if (const auto hash = util::hex(crypto::hash(password + config::sunshine.salt)).to_string(); !boost::iequals(username, config::sunshine.username) || hash != config::sunshine.password) {
+      confighttp_validation::auth_rate_limit_record_failure(address);
       return false;
     }
 
+    confighttp_validation::auth_rate_limit_clear(address);
     fg.disable();
     return true;
   }
@@ -753,11 +764,14 @@ namespace confighttp {
     std::stringstream ss;
     ss << request->content.rdbuf();
     try {
-      // TODO: Input Validation
       nlohmann::json output_tree;
       nlohmann::json input_tree = nlohmann::json::parse(ss);
+      if (const auto validation_error = confighttp_validation::validate_app_json(input_tree)) {
+        bad_request(response, request, *validation_error);
+        return;
+      }
+
       std::string file = file_handler::read_file(config::stream.file_apps.c_str());
-      BOOST_LOG(info) << file;
       nlohmann::json file_tree = nlohmann::json::parse(file);
 
       if (input_tree["prep-cmd"].empty()) {
@@ -1243,10 +1257,13 @@ namespace confighttp {
     ss << request->content.rdbuf();
 
     try {
-      // TODO: Input Validation
       nlohmann::json output_tree;
       const nlohmann::json input_tree = nlohmann::json::parse(ss);
       const std::string uuid = input_tree.value("uuid", "");
+      if (!confighttp_validation::validate_client_uuid(uuid)) {
+        bad_request(response, request, "Invalid uuid");
+        return;
+      }
       const bool removed = nvhttp::unpair_client(uuid);
       output_tree["status"] = removed;
 
@@ -1374,10 +1391,14 @@ namespace confighttp {
     std::stringstream ss;
     ss << request->content.rdbuf();
     try {
-      // TODO: Input Validation
       std::stringstream config_stream;
       nlohmann::json output_tree;
       nlohmann::json input_tree = nlohmann::json::parse(ss);
+      if (const auto validation_error = confighttp_validation::validate_config_patch(input_tree)) {
+        bad_request(response, request, *validation_error);
+        return;
+      }
+
       for (const auto &[k, v] : input_tree.items()) {
         if (v.is_null() || (v.is_string() && v.get<std::string>().empty())) {
           continue;
@@ -1483,6 +1504,11 @@ namespace confighttp {
       return;
     }
 
+    std::string client_id = get_client_id(request);
+    if (!validate_csrf_token(response, request, client_id)) {
+      return;
+    }
+
     std::stringstream ss;
     ss << request->content.rdbuf();
     try {
@@ -1490,11 +1516,14 @@ namespace confighttp {
       nlohmann::json input_tree = nlohmann::json::parse(ss);
 
       std::string key = input_tree.value("key", "");
-      if (key.empty()) {
-        bad_request(response, request, "Cover key is required");
+      std::string url = input_tree.value("url", "");
+      const std::string encoded_data = input_tree.value("data", "");
+      const std::size_t upload_size = url.empty() ? SimpleWeb::Crypto::Base64::decode(encoded_data).size() : 0;
+
+      if (const auto validation_error = confighttp_validation::validate_cover_upload(key, upload_size)) {
+        bad_request(response, request, *validation_error);
         return;
       }
-      std::string url = input_tree.value("url", "");
 
       const std::string coverdir = platf::appdata().string() + "/covers/";
       file_handler::make_directory(coverdir);
@@ -1509,11 +1538,19 @@ namespace confighttp {
           bad_request(response, request, "Failed to download cover");
           return;
         }
+        if (!proc::check_valid_png(path)) {
+          bad_request(response, request, "Invalid PNG file");
+          return;
+        }
       } else {
-        auto data = SimpleWeb::Crypto::Base64::decode(input_tree.value("data", ""));
+        auto data = SimpleWeb::Crypto::Base64::decode(encoded_data);
+        if (!confighttp_validation::is_valid_png_bytes(data)) {
+          bad_request(response, request, "Invalid PNG file");
+          return;
+        }
 
-        std::ofstream imgfile(path);
-        imgfile.write(data.data(), static_cast<int>(data.size()));
+        std::ofstream imgfile(path, std::ios::binary);
+        imgfile.write(data.data(), static_cast<std::streamsize>(data.size()));
       }
       output_tree["status"] = true;
       output_tree["path"] = path;
@@ -1586,9 +1623,14 @@ namespace confighttp {
     std::stringstream config_stream;
     ss << request->content.rdbuf();
     try {
-      // TODO: Input Validation
       nlohmann::json output_tree;
       nlohmann::json input_tree = nlohmann::json::parse(ss);
+      const bool initial_setup = config::sunshine.username.empty();
+      if (const auto validation_error = confighttp_validation::validate_password_change(input_tree, initial_setup)) {
+        bad_request(response, request, *validation_error);
+        return;
+      }
+
       std::string username = input_tree.value("currentUsername", "");
       std::string newUsername = input_tree.value("newUsername", "");
       std::string password = input_tree.value("currentPassword", "");
@@ -2023,6 +2065,11 @@ namespace confighttp {
 
       if (!fs::is_directory(dir_path, ec)) {
         bad_request(response, request, "Path is not a directory");
+        return;
+      }
+
+      if (!confighttp_validation::is_browse_path_allowed(dir_path)) {
+        response->write(SimpleWeb::StatusCode::client_error_forbidden);
         return;
       }
 
