@@ -385,6 +385,8 @@ LizardByte has the full documentation hosted on [Read the Docs](https://docs.liz
         <td>FreeBSD: 14.4+</td>
     </tr>
     <tr>
+        <td>openSUSE Tumbleweed</td>
+    <tr>
         <td>Linux/Debian: 13+ (trixie)</td>
     </tr>
     <tr>
