@@ -92,6 +92,7 @@ body:
         - Linux - deb
         - Linux - Docker
         - Linux - Fedora Copr
+        - Linux - Open Build System
         - Linux - flathub/flatpak
         - Linux - Homebrew
         - Linux - LizardByte/pacman-repo
