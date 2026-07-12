@@ -89,7 +89,10 @@ CUDA is used for NVFBC capture.
         <td>Sunshine (copr - Fedora)</td>
     </tr>
     <tr>
-        <td>Sunshine (copr - OpenSUSE)</td>
+        <td>Sunshine (OBS - openSUSE Tumbleweed)</td>
+    </tr>
+    <tr>
+        <td>Sunshine-{version}.tw.{arch}.rpm</td>
     </tr>
     <tr>
         <td>sunshine.pkg.tar.zst</td>
@@ -178,13 +181,14 @@ sudo dpkg -i ./sunshine-{distro}-{distro-version}-{arch}.deb
 sudo apt remove sunshine
 ```
 
-#### Fedora/OpenSUSE
+#### Fedora
 
 > [!TIP]
 > The package name is case-sensitive.
 
 ##### Install (GitHub releases)
 Download `Sunshine-{version}.{distro+version}.{arch}.rpm` and run the following command.
+
 ```bash
 sudo dnf install ./Sunshine-{version}.{distro}.{arch}.rpm
 ```
@@ -226,6 +230,41 @@ sudo dnf remove sunshine
 ##### Uninstall
 ```bash
 sudo dnf remove Sunshine
+```
+
+#### openSUSE Tumbleweed
+
+> [!TIP]
+> The package name is case-sensitive.
+
+Sunshine RPMs for openSUSE Tumbleweed are built on the
+[Open Build Service (OBS)](https://build.opensuse.org/).
+
+##### Install (GitHub releases)
+Download `Sunshine-{version}.tw.{arch}.rpm` from the
+[latest release](https://github.com/LizardByte/Sunshine/releases/latest) and run:
+
+```bash
+sudo zypper install ./Sunshine-{version}.tw.{arch}.rpm
+```
+
+##### Install (OBS repository)
+
+1. Add the OBS repository (replace the URL if your maintainer uses a different OBS project):
+   ```bash
+   sudo zypper addrepo \
+     https://download.opensuse.org/repositories/home:/LizardByte:/sunshine/openSUSE_Tumbleweed/home:LizardByte:sunshine.repo
+   sudo zypper refresh
+   ```
+
+2. Install the package:
+   ```bash
+   sudo zypper install Sunshine
+   ```
+
+##### Uninstall
+```bash
+sudo zypper remove Sunshine
 ```
 
 #### Flatpak
