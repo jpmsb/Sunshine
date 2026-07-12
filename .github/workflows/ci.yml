@@ -129,6 +129,19 @@ jobs:
       release_commit: ${{ needs.release-setup.outputs.release_commit }}
       release_version: ${{ needs.release-setup.outputs.release_version }}
 
+  build-opensuse-tumbleweed:
+    name: openSUSE Tumbleweed (OBS)
+    needs: release-setup
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-obs.yml
+    with:
+      release_commit: ${{ needs.release-setup.outputs.release_commit }}
+      release_version: ${{ needs.release-setup.outputs.release_version }}
+    secrets:
+      OBS_USER: ${{ secrets.OBS_USER }}
+      OBS_PASSWORD: ${{ secrets.OBS_PASSWORD }}
+
   build-linux-copr:
     name: Linux Copr
     if: github.event_name != 'push'  # releases are handled directly in ci-copr.yml
@@ -189,6 +202,7 @@ jobs:
       - build-freebsd
       - build-linux
       - build-archlinux
+      - build-opensuse-tumbleweed
       - build-linux-flatpak
       - build-macos
       - build-homebrew
@@ -212,6 +226,12 @@ jobs:
           - name: Archlinux
             coverage: true
             pr: true
+          - name: OpenSUSE-Tumbleweed-x86_64
+            coverage: false
+            pr: true
+          - name: OpenSUSE-Tumbleweed-aarch64
+            coverage: false
+            pr: false
           - name: macOS-arm64
             coverage: true
             pr: true
@@ -294,6 +314,7 @@ jobs:
     needs:
       - release-setup
       - build-archlinux
+      - build-opensuse-tumbleweed
       - build-docker
       - build-freebsd
       - build-homebrew
