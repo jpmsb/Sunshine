@@ -41,8 +41,13 @@ BuildRequires: libXi-devel
 BuildRequires: libXinerama-devel
 BuildRequires: libXrandr-devel
 BuildRequires: libXtst-devel
-BuildRequires: openssl-devel
 BuildRequires: pipewire-devel
+%if 0%{?fedora}
+BuildRequires: openssl-devel
+%endif
+%if 0%{?suse_version}
+BuildRequires: libopenssl-3-devel
+%endif
 BuildRequires: rpm-build
 BuildRequires: systemd-rpm-macros
 BuildRequires: wget
@@ -89,9 +94,15 @@ BuildRequires: libminiupnpc-devel
 BuildRequires: libnuma-devel
 BuildRequires: libopus-devel
 BuildRequires: libpulse-devel
+%if 0%{?suse_version} <= 1699
 BuildRequires: npm
 BuildRequires: python311
 BuildRequires: python311-Jinja2
+%else
+BuildRequires: npm-default
+BuildRequires: python313
+BuildRequires: python313-Jinja2
+%endif
 %if !0%{?sle_version}
 BuildRequires: shaderc
 %endif
@@ -141,8 +152,8 @@ BuildRequires: libqt5-qtsvg-devel
 # OpenSUSE Tumbleweed
 BuildRequires: gcc14
 BuildRequires: gcc14-c++
-BuildRequires: libqt6-qtbase-devel
-BuildRequires: libqt6-qtsvg-devel
+BuildRequires: qt6-base-devel
+BuildRequires: qt6-svg-devel
 %global gcc_version 14
 %global cuda_version 12.9.1
 %global cuda_build 575.57.08
@@ -152,9 +163,12 @@ BuildRequires: libqt6-qtsvg-devel
 %global cuda_dir %{_builddir}/cuda
 
 # Common runtime requirements
+Requires: which >= 2.21
+
+%if 0%{?fedora}
 Requires: libnotify >= 0.8.0
 Requires: miniupnpc >= 2.2.4
-Requires: which >= 2.21
+%endif
 
 %if 0%{?fedora}
 # Fedora runtime requirements
@@ -176,6 +190,7 @@ Requires: vulkan-loader
 
 %if 0%{?suse_version}
 # OpenSUSE runtime requirements
+Requires: libnotify4
 Requires: libcap2
 Requires: libcurl4
 Requires: libdrm2
@@ -187,6 +202,7 @@ Requires: libX11-6
 Requires: libnuma1
 Requires: libopenssl3
 Requires: libpulse0
+Requires: libminiupnpc21
 %if !0%{?sle_version}
 Requires: libvulkan1
 %endif
@@ -249,9 +265,15 @@ cmake_args+=("-DPython_EXECUTABLE=%{_builddir}/Sunshine/.venv/bin/python")
 %endif
 
 %if 0%{?suse_version}
+%if 0%{?suse_version} <= 1699
 # Use the Python interpreter that owns the python311-Jinja2 BuildRequires.
 cmake_args+=("-DGLAD_SKIP_PIP_INSTALL=ON")
 cmake_args+=("-DPython_EXECUTABLE=/usr/bin/python3.11")
+%else
+# Tumbleweed: python3 is provided by python313
+cmake_args+=("-DGLAD_SKIP_PIP_INSTALL=ON")
+cmake_args+=("-DPython_EXECUTABLE=/usr/bin/python3.13")
+%endif
 %endif
 
 export CC=gcc-%{gcc_version}
