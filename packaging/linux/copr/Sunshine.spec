@@ -8,6 +8,10 @@
 
 %undefine _hardened_build
 
+# When enabled (default), download the NVIDIA CUDA runfile if no system nvcc is found.
+# Build with --without bundled_cuda to skip the runfile (use system nvcc or build without CUDA).
+%bcond_without bundled_cuda 1
+
 # Define _metainfodir for OpenSUSE if not already defined
 %if 0%{?suse_version}
 %if !0%{?_metainfodir:1}
@@ -18,8 +22,8 @@
 Name: Sunshine
 Version: %{build_version}
 Release: 1%{?dist}
-Summary: Self-hosted game stream host for Moonlight.
-License: GPLv3-only
+Summary: Self-hosted game stream host for Moonlight
+License: GPL-3.0-only
 URL: https://github.com/LizardByte/Sunshine
 Source0: tarball.tar.gz
 
@@ -94,11 +98,13 @@ BuildRequires: libminiupnpc-devel
 BuildRequires: libnuma-devel
 BuildRequires: libopus-devel
 BuildRequires: libpulse-devel
-%if 0%{?suse_version} <= 1699
+%if 0%{?sle_version}
+# OpenSUSE Leap: npm/python package names differ from Tumbleweed
 BuildRequires: npm
 BuildRequires: python311
 BuildRequires: python311-Jinja2
 %else
+# OpenSUSE Tumbleweed (suse_version may equal Leap; sle_version is unset)
 BuildRequires: npm-default
 BuildRequires: python313
 BuildRequires: python313-Jinja2
@@ -138,25 +144,24 @@ BuildRequires: gcc15-c++
 %endif
 
 %if 0%{?suse_version}
-%if 0%{?suse_version} <= 1699
-# OpenSUSE Leap 15.x
+%if 0%{?sle_version}
+# OpenSUSE Leap 15.x (Qt6 not in standard repos, use Qt5)
 BuildRequires: gcc14
 BuildRequires: gcc14-c++
-# OpenSUSE Leap: Qt6 not in standard repos, use Qt5
 BuildRequires: libqt5-qtbase-devel
 BuildRequires: libqt5-qtsvg-devel
 %global gcc_version 14
 %global cuda_version 12.9.1
 %global cuda_build 575.57.08
 %else
-# OpenSUSE Tumbleweed
-BuildRequires: gcc14
-BuildRequires: gcc14-c++
+# OpenSUSE Tumbleweed (suse_version may equal Leap; sle_version is unset)
+BuildRequires: gcc15
+BuildRequires: gcc15-c++
 BuildRequires: qt6-base-devel
 BuildRequires: qt6-svg-devel
-%global gcc_version 14
-%global cuda_version 12.9.1
-%global cuda_build 575.57.08
+%global gcc_version 15
+%global cuda_version 13.1.1
+%global cuda_build 590.48.01
 %endif
 %endif
 
@@ -189,32 +194,7 @@ Requires: vulkan-loader
 %endif
 
 %if 0%{?suse_version}
-# OpenSUSE runtime requirements
-Requires: libnotify4
-Requires: libcap2
-Requires: libcurl4
-Requires: libdrm2
-Requires: libevdev2
-Requires: libopusenc0
-Requires: libva2
-Requires: libwayland-client0
-Requires: libX11-6
-Requires: libnuma1
-Requires: libopenssl3
-Requires: libpulse0
-Requires: libminiupnpc21
-%if !0%{?sle_version}
-Requires: libvulkan1
-%endif
-%if 0%{?suse_version} <= 1699
-# OpenSUSE Leap: built with Qt5
-Requires: libQt5Svg5
-Requires: libQt5Widgets5
-%else
-# OpenSUSE Tumbleweed: built with Qt6
-Requires: libQt6Svg6
-Requires: libQt6Widgets6
-%endif
+# Shared library dependencies are added automatically on openSUSE via shlib policy.
 %endif
 
 %description
@@ -265,8 +245,8 @@ cmake_args+=("-DPython_EXECUTABLE=%{_builddir}/Sunshine/.venv/bin/python")
 %endif
 
 %if 0%{?suse_version}
-%if 0%{?suse_version} <= 1699
-# Use the Python interpreter that owns the python311-Jinja2 BuildRequires.
+%if 0%{?sle_version}
+# Leap: use the Python interpreter that owns python311-Jinja2
 cmake_args+=("-DGLAD_SKIP_PIP_INSTALL=ON")
 cmake_args+=("-DPython_EXECUTABLE=/usr/bin/python3.11")
 %else
@@ -278,6 +258,35 @@ cmake_args+=("-DPython_EXECUTABLE=/usr/bin/python3.13")
 
 export CC=gcc-%{gcc_version}
 export CXX=g++-%{gcc_version}
+
+function apply_cuda_patches() {
+  local toolkit_root="$1"
+
+  # we need to patch math_functions.h depending on the CUDA major version
+  # see https://forums.developer.nvidia.com/t/error-exception-specification-is-incompatible-for-cospi-sinpi-cospif-sinpif-with-glibc-2-41/323591/3
+  local cuda_major
+  cuda_major=$(echo "%{cuda_version}" | cut -d. -f1)
+  local patch_file=""
+  if [ "${cuda_major}" -eq 12 ]; then
+    # CUDA 12.x: the extern declarations lack noexcept(true); add it to match glibc 2.41.
+    patch_file="cuda-12-math_functions.patch"
+  elif [ "${cuda_major}" -eq 13 ]; then
+    # CUDA 13.x: the extern declarations already have noexcept(true), but the __func__()
+    # macro invocations at the bottom still lack it, causing a redeclaration conflict.
+    patch_file="cuda-13-math_functions.patch"
+  else
+    echo "Warning: no math_functions.h patch available for CUDA ${cuda_major}.x, skipping."
+  fi
+
+  if [ -n "${patch_file}" ]; then
+    echo "Applying CUDA patch: ${patch_file}"
+    patch -p2 \
+      --backup \
+      --directory="${toolkit_root}" \
+      --verbose \
+      < "%{_builddir}/Sunshine/packaging/linux/patches/${architecture}/${patch_file}"
+  fi
+}
 
 function install_cuda() {
   # check if we need to install cuda
@@ -311,37 +320,55 @@ function install_cuda() {
     --toolkitpath="%{cuda_dir}"
   rm "%{_builddir}/cuda.run"
 
-  # we need to patch math_functions.h depending on the CUDA major version
-  # see https://forums.developer.nvidia.com/t/error-exception-specification-is-incompatible-for-cospi-sinpi-cospif-sinpif-with-glibc-2-41/323591/3
-  local cuda_major
-  cuda_major=$(echo "%{cuda_version}" | cut -d. -f1)
-  local patch_file=""
-  if [ "${cuda_major}" -eq 12 ]; then
-    # CUDA 12.x: the extern declarations lack noexcept(true); add it to match glibc 2.41.
-    patch_file="cuda-12-math_functions.patch"
-  elif [ "${cuda_major}" -eq 13 ]; then
-    # CUDA 13.x: the extern declarations already have noexcept(true), but the __func__()
-    # macro invocations at the bottom still lack it, causing a redeclaration conflict.
-    patch_file="cuda-13-math_functions.patch"
-  else
-    echo "Warning: no math_functions.h patch available for CUDA ${cuda_major}.x, skipping."
-  fi
-
-  if [ -n "${patch_file}" ]; then
-    echo "Applying CUDA patch: ${patch_file}"
-    patch -p2 \
-      --backup \
-      --directory="%{cuda_dir}" \
-      --verbose \
-      < "%{_builddir}/Sunshine/packaging/linux/patches/${architecture}/${patch_file}"
-  fi
+  apply_cuda_patches "%{cuda_dir}"
 }
 
-if [ -n "%{cuda_version}" ] && [[ " ${cuda_supported_architectures[@]} " =~ " ${architecture} " ]]; then
+function detect_nvcc_path() {
+  local nvcc_path=""
+
+  nvcc_path="$(command -v nvcc 2>/dev/null || true)"
+  if [ -n "${nvcc_path}" ]; then
+    echo "${nvcc_path}"
+    return 0
+  fi
+
+  for candidate in \
+    "/usr/local/cuda/bin/nvcc" \
+    "%{cuda_dir}/bin/nvcc"; do
+    if [ -x "${candidate}" ]; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+nvcc_path=""
+if nvcc_path="$(detect_nvcc_path)"; then
+  echo "Using CUDA compiler: ${nvcc_path}"
+fi
+
+%if %{with bundled_cuda}
+if [ -z "${nvcc_path}" ]; then
   install_cuda
+  nvcc_path="%{cuda_dir}/bin/nvcc"
+fi
+%else
+echo "bundled_cuda disabled; skipping NVIDIA CUDA runfile download"
+%endif
+
+if [ -n "%{cuda_version}" ] && [[ " ${cuda_supported_architectures[@]} " =~ " ${architecture} " ]]; then
   cmake_args+=("-DSUNSHINE_ENABLE_CUDA=ON")
-  cmake_args+=("-DCMAKE_CUDA_COMPILER:PATH=%{cuda_dir}/bin/nvcc")
-  cmake_args+=("-DCMAKE_CUDA_HOST_COMPILER=gcc-%{gcc_version}")
+  if [ -n "${nvcc_path}" ] && [ -x "${nvcc_path}" ]; then
+    cuda_toolkit_root="$(cd "$(dirname "${nvcc_path}")/.." && pwd)"
+    apply_cuda_patches "${cuda_toolkit_root}"
+    cmake_args+=("-DCMAKE_CUDA_COMPILER:PATH=${nvcc_path}")
+    cmake_args+=("-DCMAKE_CUDA_HOST_COMPILER=gcc-%{gcc_version}")
+  else
+    echo "No CUDA compiler found; building without NVENC/NvFBC (CUDA_FAIL_ON_MISSING=OFF)"
+    cmake_args+=("-DCUDA_FAIL_ON_MISSING=OFF")
+  fi
 else
   cmake_args+=("-DSUNSHINE_ENABLE_CUDA=OFF")
 fi
@@ -389,6 +416,13 @@ export COMMIT=%{commit}
 cmake_args+=("-DSUNSHINE_ENABLE_VULKAN=OFF")
 %endif
 
+%if 0%{?suse_version}
+%if !0%{?sle_version}
+# build-deps is excluded from packaging tarballs; use distro Vulkan headers on Tumbleweed
+cmake_args+=("-DSUNSHINE_SYSTEM_VULKAN_HEADERS=ON")
+%endif
+%endif
+
 # cmake
 cd %{_builddir}/Sunshine
 %if 0%{?fedora}
@@ -406,13 +440,13 @@ make -j$(nproc) -C "%{_builddir}/Sunshine/build"
 
 %check
 # validate the metainfo file
-appstreamcli validate %{buildroot}%{_metainfodir}/*.metainfo.xml
+appstreamcli validate --no-net %{buildroot}%{_metainfodir}/*.metainfo.xml
 appstream-util validate %{buildroot}%{_metainfodir}/*.metainfo.xml
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop
 
-# run tests
+# run tests under Xvfb only; unset Wayland session vars so platf::init() enables X11 capture
 cd %{_builddir}/Sunshine/build
-xvfb-run ./tests/test_sunshine
+env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE xvfb-run -a -s "-screen 0 1024x768x24" ./tests/test_sunshine
 
 %install
 # Load NVM for Fedora 44+ so npm is available during make install
@@ -432,6 +466,11 @@ echo "npm version: $(npm --version)"
 
 cd %{_builddir}/Sunshine/build
 %make_install
+
+%if 0%{?suse_version}
+# Reduce rpmlint noise for local/Tumbleweed builds (symbols are not needed in the package).
+strip %{buildroot}%{_bindir}/sunshine
+%endif
 
 %post
 # Note: this is copied from the postinst script
@@ -485,3 +524,5 @@ fi
 %{_datadir}/sunshine/**
 
 %changelog
+* Sun Jul 12 2026 LizardByte <https://github.com/LizardByte/Sunshine> - %{version}-%{release}
+- Update to %{version}
