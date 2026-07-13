@@ -1256,7 +1256,10 @@ namespace platf {
 #ifdef SUNSHINE_BUILD_DRM
     if (sources[source::KMS]) {
       BOOST_LOG(info) << "Screencasting with KMS"sv;
-      return kms_display(hwdevice_type, display_name, config);
+      if (auto kms_disp = kms_display(hwdevice_type, display_name, config)) {
+        return kms_disp;
+      }
+      BOOST_LOG(warning) << "KMS capture failed; trying other backends"sv;
     }
 #endif
 
@@ -1274,7 +1277,10 @@ namespace platf {
 #ifdef SUNSHINE_BUILD_WAYLAND
     if (sources[source::WAYLAND]) {
       BOOST_LOG(info) << "Screencasting with Wayland's protocol"sv;
-      return wl_display(hwdevice_type, display_name, config);
+      if (auto wl_disp = wl_display(hwdevice_type, display_name, config)) {
+        return wl_disp;
+      }
+      BOOST_LOG(warning) << "Wayland capture failed; trying other backends"sv;
     }
 #endif
 #ifdef SUNSHINE_BUILD_X11
@@ -1286,13 +1292,19 @@ namespace platf {
 #ifdef SUNSHINE_BUILD_PORTAL
     if (sources[source::PORTAL]) {
       BOOST_LOG(info) << "Screencasting with XDG portal"sv;
-      return portal_display(hwdevice_type, display_name, config);
+      if (auto portal_disp = portal_display(hwdevice_type, display_name, config)) {
+        return portal_disp;
+      }
+      BOOST_LOG(warning) << "XDG portal capture failed; trying other backends"sv;
     }
 #endif
 #ifdef SUNSHINE_BUILD_KWIN
     if (sources[source::KWIN]) {
       BOOST_LOG(info) << "Screencasting with KWin ScreenCast"sv;
-      return kwin_display(hwdevice_type, display_name, config);
+      if (auto kwin_disp = kwin_display(hwdevice_type, display_name, config)) {
+        return kwin_disp;
+      }
+      BOOST_LOG(warning) << "KWin capture failed; trying other backends"sv;
     }
 #endif
 
