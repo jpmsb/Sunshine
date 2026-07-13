@@ -287,7 +287,7 @@ int main(int argc, char *argv[]) {
   std::promise<void> session_monitor_join_thread_promise;
   auto session_monitor_join_thread_future = session_monitor_join_thread_promise.get_future();
 
-  std::thread session_monitor_thread([&]() {
+  std::jthread session_monitor_thread([&]() {
     platf::set_thread_name("session_monitor");
     session_monitor_join_thread_promise.set_value_at_thread_exit();
 
@@ -468,9 +468,9 @@ int main(int argc, char *argv[]) {
 #endif
   }
 
-  std::thread httpThread {nvhttp::start};
-  std::thread configThread {confighttp::start};
-  std::thread rtspThread {rtsp_stream::start};
+  std::jthread httpThread {nvhttp::start};
+  std::jthread configThread {confighttp::start};
+  std::jthread rtspThread {rtsp_stream::start};
 
 #ifdef _WIN32
   // If we're using the default port and GameStream is enabled, warn the user
