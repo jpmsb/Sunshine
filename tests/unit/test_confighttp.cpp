@@ -111,6 +111,7 @@ protected:
   std::filesystem::path key_file;
   std::filesystem::path web_dir_test_file;
   std::string saved_file_state;
+  std::string saved_config_file;
 
   void SetUp() override {
     BaseTest::SetUp();
@@ -122,6 +123,7 @@ protected:
     saved_pin_stdin = config::sunshine.flags.test(config::flag::PIN_STDIN);
     saved_csrf_allowed_origins = config::sunshine.csrf_allowed_origins;
     saved_file_state = config::nvhttp.file_state;
+    saved_config_file = config::sunshine.config_file;
 
     // Set up test credentials
     config::sunshine.username = "testuser";
@@ -145,6 +147,10 @@ protected:
     // Create test web directory in temp
     test_web_dir = std::filesystem::temp_directory_path() / "sunshine_test_confighttp";  // NOSONAR(cpp:S5443) - safe for tests
     std::filesystem::create_directories(test_web_dir / "web");
+
+    const auto isolated_config = test_web_dir / "sunshine.conf";
+    std::ofstream {isolated_config};
+    config::sunshine.config_file = isolated_config.string();
 
     // Create test HTML file in the web assets directory
     std::filesystem::path web_dir_path(assets_path::web());
@@ -381,6 +387,7 @@ protected:
     config::sunshine.salt = saved_salt;
     config::sunshine.locale = saved_locale;
     config::sunshine.flags[config::flag::PIN_STDIN] = saved_pin_stdin;
+    config::sunshine.config_file = saved_config_file;
     config::sunshine.csrf_allowed_origins = saved_csrf_allowed_origins;
     config::nvhttp.file_state = saved_file_state;
     nvhttp::erase_all_clients();
