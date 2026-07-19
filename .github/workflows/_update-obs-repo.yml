@@ -1,0 +1,93 @@
+---
+# Submit Sunshine sources to OBS on stable release (optional publish path).
+# CI package builds for Tumbleweed run on GitHub Actions via ci-obs.yml.
+
+name: Update OBS repo
+permissions: {}
+
+on:
+  release:
+    types:
+      - released
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event.release.tag_name }}"
+  cancel-in-progress: true
+
+jobs:
+  submit_obs:
+    name: Submit to OBS
+    if: github.repository_owner == 'LizardByte'
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    container:
+      image: registry.opensuse.org/opensuse/tumbleweed
+      options: --cpus 4 --memory 8g
+    steps:
+      - name: Skip when OBS is not configured
+        id: obs_config
+        shell: bash
+        env:
+          OBS_USER: ${{ secrets.OBS_USER }}
+          OBS_PASSWORD: ${{ secrets.OBS_PASSWORD }}
+          OBS_PROJECT: ${{ vars.OBS_PROJECT }}
+        run: |
+          if [[ -z "${OBS_USER}" || -z "${OBS_PASSWORD}" || -z "${OBS_PROJECT}" ]]; then
+            echo "OBS credentials or OBS_PROJECT are not configured; skipping."
+            echo "SKIP=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "SKIP=false" >> "${GITHUB_OUTPUT}"
+
+      - name: Install tools
+        if: steps.obs_config.outputs.SKIP != 'true'
+        shell: bash
+        run: |
+          zypper --non-interactive refresh
+          zypper --non-interactive install -y --no-recommends \
+            git \
+            osc \
+            pigz \
+            python3 \
+            rpm-build \
+            tar \
+            which
+
+      - name: Checkout
+        if: steps.obs_config.outputs.SKIP != 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          submodules: recursive
+
+      - name: Configure osc
+        if: steps.obs_config.outputs.SKIP != 'true'
+        shell: bash
+        env:
+          OBS_USER: ${{ secrets.OBS_USER }}
+          OBS_PASSWORD: ${{ secrets.OBS_PASSWORD }}
+        run: bash .github/workflows/configure_osc.sh
+
+      - name: Submit to OBS
+        if: steps.obs_config.outputs.SKIP != 'true'
+        shell: bash
+        env:
+          OBS_PROJECT: ${{ vars.OBS_PROJECT }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          chmod +x ./scripts/obs_submit.sh ./scripts/prepare_rpm_source.sh
+          version="${RELEASE_TAG#v}"
+          ./scripts/obs_submit.sh \
+            --obs-project "${OBS_PROJECT}" \
+            --obs-package Sunshine \
+            --version "${version}" \
+            --branch master \
+            --commit "$(git rev-parse HEAD)"
+
+      - name: Skip notice
+        if: steps.obs_config.outputs.SKIP == 'true'
+        shell: bash
+        run: |
+          echo "OBS publish skipped. Configure secrets OBS_USER/OBS_PASSWORD and variable OBS_PROJECT to enable."
