@@ -679,7 +679,12 @@ namespace rtsp_stream {
           {
             const auto endpoint = stream::session::peer_endpoint(slot);
             const auto metadata = nvhttp::get_client_metadata_by_cert(stream::session::client_cert(slot));
-            system_tray::notify_client_disconnected(metadata.name, endpoint.first, endpoint.second);
+            system_tray::notify_client_disconnected(
+              metadata.name,
+              endpoint.first,
+              endpoint.second,
+              stream::session::launch_session_id(slot)
+            );
           }
 #endif
           stream::session::join(slot);
@@ -712,7 +717,12 @@ namespace rtsp_stream {
           {
             const auto endpoint = stream::session::peer_endpoint(slot);
             const auto metadata = nvhttp::get_client_metadata_by_cert(stream::session::client_cert(slot));
-            system_tray::notify_client_disconnected(metadata.name, endpoint.first, endpoint.second);
+            system_tray::notify_client_disconnected(
+              metadata.name,
+              endpoint.first,
+              endpoint.second,
+              stream::session::launch_session_id(slot)
+            );
           }
 #endif
           stream::session::join(slot);
@@ -757,9 +767,9 @@ namespace rtsp_stream {
           stream::session::set_paused(slot, paused);
 #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
           if (paused) {
-            system_tray::notify_client_paused(metadata.name, endpoint.first, endpoint.second);
+            system_tray::notify_client_paused(metadata.name, endpoint.first, endpoint.second, session_id);
           } else {
-            system_tray::notify_client_resumed(metadata.name, endpoint.first, endpoint.second);
+            system_tray::notify_client_resumed(metadata.name, endpoint.first, endpoint.second, session_id);
           }
 #endif
           BOOST_LOG(info) << "Session "sv << session_id << (paused ? " paused"sv : " resumed"sv);
