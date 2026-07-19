@@ -1,0 +1,79 @@
+---
+# Build openSUSE Tumbleweed RPMs on GitHub Actions (x86_64 and aarch64).
+# OBS submit for the public repository is handled separately by _update-obs-repo.yml.
+name: CI-OBS
+permissions: {}
+
+on:
+  workflow_call:
+    inputs:
+      release_commit:
+        required: true
+        type: string
+      release_version:
+        required: true
+        type: string
+
+jobs:
+  build_tumbleweed:
+    name: ${{ matrix.arch }}
+    timeout-minutes: 120
+    env:
+      BRANCH: ${{ github.head_ref || github.ref_name }}
+      BUILD_VERSION: ${{ inputs.release_version }}
+      COMMIT: >-
+        ${{
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.sha ||
+          inputs.release_commit
+        }}
+    permissions:
+      contents: read
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+    container:
+      image: registry.opensuse.org/opensuse/tumbleweed
+      options: --cpus 4 --memory 8g
+    steps:
+      - name: Install base tools
+        shell: bash
+        run: |
+          zypper --non-interactive refresh
+          zypper --non-interactive install -y --no-recommends \
+            git \
+            pigz \
+            rpm-build \
+            rpmlint \
+            tar \
+            which
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          submodules: recursive
+
+      - name: Build RPM
+        shell: bash
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          chmod +x ./scripts/build_tumbleweed_rpm.sh ./scripts/prepare_rpm_source.sh
+          ./scripts/build_tumbleweed_rpm.sh \
+            --sudo-off \
+            --version "${BUILD_VERSION}" \
+            --branch "${BRANCH}" \
+            --commit "${COMMIT}" \
+            --output-dir "${GITHUB_WORKSPACE}/artifacts"
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: build-openSUSE-Tumbleweed-${{ matrix.arch }}
+          path: artifacts/
+          if-no-files-found: error
