@@ -747,9 +747,9 @@ function run_step_cmake() {
 function run_step_validation() {
   echo "Running step: Validation"
 
-  # Run appstream validation, etc.
-  appstreamcli validate "build/dev.lizardbyte.app.Sunshine.metainfo.xml"
-  appstream-util validate "build/dev.lizardbyte.app.Sunshine.metainfo.xml"
+  # Run appstream validation, etc. (offline: remote screenshots may be unreachable)
+  appstreamcli validate --no-net "build/dev.lizardbyte.app.Sunshine.metainfo.xml"
+  appstream-util validate --nonet "build/dev.lizardbyte.app.Sunshine.metainfo.xml"
   desktop-file-validate "build/dev.lizardbyte.app.Sunshine.desktop"
   if [[ "$appimage_build" == 0 ]]; then
     desktop-file-validate "build/dev.lizardbyte.app.Sunshine.terminal.desktop"
