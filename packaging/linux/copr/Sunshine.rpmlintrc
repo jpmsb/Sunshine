@@ -1,0 +1,7 @@
+# rpmlint overrides for Sunshine on openSUSE.
+# Intentional packaging choices; filter names must match rpmlint check ids (no E:/W: prefix).
+
+addFilter("permissions-fscaps")
+addFilter("files-duplicate")
+addFilter("position-independent-executable-suggested")
+addFilter("desktopfile-without-binary")
