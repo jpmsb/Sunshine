@@ -252,10 +252,19 @@ jobs:
     steps:
       - name: Should run
         id: should_run
+        env:
+          MATRIX_NAME: ${{ matrix.name }}
+          MATRIX_PR: ${{ matrix.pr }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           should_run="false"
-          if [ "${GITHUB_EVENT_NAME}" != "pull_request" ] || [ ${{ matrix.pr }} == "true" ]; then
+          if [ "${GITHUB_EVENT_NAME}" != "pull_request" ] || [ "${MATRIX_PR}" == "true" ]; then
             should_run="true"
+          fi
+          # Homebrew formula tests/coverage only run on the upstream LizardByte repo.
+          if [[ "${MATRIX_NAME}" == Homebrew-* && "${REPOSITORY}" != "LizardByte/Sunshine" ]]; then
+            should_run="false"
+            echo "Skipping Homebrew coverage on fork (${REPOSITORY})."
           fi
           echo "SHOULD_RUN=${should_run}" >> "${GITHUB_OUTPUT}"
 
