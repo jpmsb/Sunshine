@@ -22,9 +22,10 @@ class Sunshine < Formula
   license all_of: ["GPL-3.0-only"]
   head "@GITHUB_CLONE_URL@", branch: "@GITHUB_DEFAULT_BRANCH@"
 
-  # https://docs.brew.sh/Brew-Livecheck#githublatest-strategy-block
+  # Canonical upstream releases (forks often have no GitHub Releases, which
+  # makes `url :stable` + `:github_latest` return HTTP 404 during brew livecheck).
   livecheck do
-    url :stable
+    url "https://github.com/LizardByte/Sunshine"
     regex(/^v?(\d+\.\d+\.\d+)$/i)
     strategy :github_latest do |json, regex|
       match = json["tag_name"]&.match(regex)
