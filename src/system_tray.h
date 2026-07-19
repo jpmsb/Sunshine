@@ -4,6 +4,10 @@
  */
 #pragma once
 
+// standard includes
+#include <cstdint>
+#include <string>
+
 /**
  * @brief Handles the system tray icon and notification system.
  */
@@ -87,8 +91,9 @@ namespace system_tray {
    * @param name Optional paired client name.
    * @param address Normalized client IP address.
    * @param port Client control port.
+   * @param session_id Launch-session identifier used by Pause/Disconnect actions.
    */
-  void notify_client_connected(const std::string &name, const std::string &address, uint16_t port);
+  void notify_client_connected(const std::string &name, const std::string &address, uint16_t port, uint32_t session_id);
 
   /**
    * @brief Show a desktop notification when a client disconnects from a stream.
@@ -96,8 +101,9 @@ namespace system_tray {
    * @param name Optional paired client name.
    * @param address Normalized client IP address.
    * @param port Client control port.
+   * @param session_id Launch-session identifier for the disconnected stream.
    */
-  void notify_client_disconnected(const std::string &name, const std::string &address, uint16_t port);
+  void notify_client_disconnected(const std::string &name, const std::string &address, uint16_t port, uint32_t session_id);
 
   /**
    * @brief Show a desktop notification when a connected client is paused.
@@ -105,8 +111,9 @@ namespace system_tray {
    * @param name Optional paired client name.
    * @param address Normalized client IP address.
    * @param port Client control port.
+   * @param session_id Launch-session identifier used by Resume/Disconnect actions.
    */
-  void notify_client_paused(const std::string &name, const std::string &address, uint16_t port);
+  void notify_client_paused(const std::string &name, const std::string &address, uint16_t port, uint32_t session_id);
 
   /**
    * @brief Show a desktop notification when a paused client is resumed.
@@ -114,8 +121,9 @@ namespace system_tray {
    * @param name Optional paired client name.
    * @param address Normalized client IP address.
    * @param port Client control port.
+   * @param session_id Launch-session identifier used by Pause/Disconnect actions.
    */
-  void notify_client_resumed(const std::string &name, const std::string &address, uint16_t port);
+  void notify_client_resumed(const std::string &name, const std::string &address, uint16_t port, uint32_t session_id);
 
   /**
    * @brief Rebuild the connected-clients submenu in the system tray.
