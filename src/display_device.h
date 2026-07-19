@@ -54,6 +54,13 @@ namespace display_device {
   [[nodiscard]] std::string map_output_name(const std::string &output_name);
 
   /**
+   * @brief Resolve a human-readable label for the configured capture output.
+   * @return Friendly monitor name when available, otherwise the mapped output name,
+   *         or an empty string when no output can be resolved.
+   */
+  [[nodiscard]] std::string configured_output_display_name();
+
+  /**
    * @brief Ask the platform to wake displays before detection or capture.
    * @param display_name Platform capture selector.
    * @param timeout Maximum time to wait for platform-specific wake detection.
