@@ -162,9 +162,10 @@ namespace stream {
      * @param address Normalized client IP address.
      * @param port Client control port.
      * @param name Optional paired client name. When empty, the name line is omitted.
-     * @return Body formatted with `Nome:`, `IP:`, and `Porta:` lines.
+     * @param monitor_name Optional monitor/display name. When non-empty, appended as the last line.
+     * @return Body formatted with Name, IP, Port, and optional Monitor lines.
      */
-    std::string format_client_notification_body(const std::string &address, uint16_t port, const std::string &name);
+    std::string format_client_notification_body(const std::string &address, uint16_t port, const std::string &name, const std::string &monitor_name = {});
 
     /**
      * @brief Build a multiline notification body for an incoming pairing request.
