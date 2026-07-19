@@ -334,7 +334,7 @@ namespace system_tray {
     tray_icon_locked = web + "images/sunshine-locked-16.png";
     tray_icon_disconnected = web + "images/sunshine-disconnected-16.png";
   #else
-    tray_icon_default = pick_tray_icon_path(web, {"images/logo-sunshine.svg", "images/sunshine-playing.svg", "images/logo-sunshine-45.png"}, "images/sunshine-playing.svg");
+    tray_icon_default = pick_tray_icon_path(web, {"images/logo-sunshine.svg", "images/logo-sunshine-45.png", "images/logo-sunshine-16.png"}, "images/logo-sunshine-45.png");
     tray_icon_playing = pick_tray_icon_path(web, {"images/sunshine-playing.svg", "images/sunshine-playing-45.png"}, "images/sunshine-playing.svg");
     tray_icon_pausing = pick_tray_icon_path(web, {"images/sunshine-pausing.svg", "images/sunshine-pausing-45.png"}, "images/sunshine-pausing.svg");
     tray_icon_locked = pick_tray_icon_path(web, {"images/sunshine-locked.svg", "images/sunshine-locked-45.png"}, "images/sunshine-locked.svg");
