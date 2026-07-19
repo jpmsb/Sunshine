@@ -1193,6 +1193,7 @@ namespace video {
       // Common options
       {
         {"async_depth"s, 1},
+        {"blbrc"s, &config::video.vaapi.blbrc},
         {"idr_interval"s, std::numeric_limits<int>::max()},
       },
       {},  // SDR-specific options
@@ -1206,6 +1207,7 @@ namespace video {
       // Common options
       {
         {"async_depth"s, 1},
+        {"blbrc"s, &config::video.vaapi.blbrc},
         {"sei"s, 0},
         {"idr_interval"s, std::numeric_limits<int>::max()},
       },
@@ -1220,6 +1222,7 @@ namespace video {
       // Common options
       {
         {"async_depth"s, 1},
+        {"blbrc"s, &config::video.vaapi.blbrc},
         {"sei"s, 0},
         {"idr_interval"s, std::numeric_limits<int>::max()},
       },
