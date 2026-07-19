@@ -51,8 +51,8 @@
 	branch = master
 [submodule "third-party/tray"]
 	path = third-party/tray
-	url = https://github.com/LizardByte/tray.git
-	branch = master
+	url = https://github.com/jpmsb/tray.git
+	branch = notification-actions
 [submodule "third-party/ViGEmClient"]
 	path = third-party/ViGEmClient
 	url = https://github.com/LizardByte/Virtual-Gamepad-Emulation-Client.git
