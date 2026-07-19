@@ -64,20 +64,24 @@ jobs:
     steps:
       - name: Detect Apple certificate
         id: apple_cert
-        if: inputs.publish_release == 'true'
         env:
           APPLE_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 }}
+          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
         run: |
-          if [[ -n "${APPLE_CERT_BASE64}" ]]; then
+          # Reusable workflows cannot use secrets in job/step `if:`; detect via env instead.
+          # Signing requires both the PKCS#12 blob and the codesign identity string.
+          if [[ -n "${APPLE_CERT_BASE64}" && -n "${APPLE_CODESIGN_IDENTITY}" ]]; then
             echo "present=true" >> "${GITHUB_OUTPUT}"
           else
             echo "present=false" >> "${GITHUB_OUTPUT}"
-            echo "Apple certificate secret is empty; continuing with unsigned build."
+            echo "Apple signing secrets incomplete; continuing with unsigned build."
           fi
 
       - name: Install Apple certificate
         uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466  # v7.0.0
-        if: steps.apple_cert.outputs.present == 'true'
+        if: >-
+          inputs.publish_release == 'true' &&
+          steps.apple_cert.outputs.present == 'true'
         with:
           p12-file-base64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 }}
           p12-password: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_P12_PASSWORD }}
@@ -149,8 +153,18 @@ jobs:
         env:
           APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
           MATRIX_NAME: ${{ matrix.name }}
-          SHOULD_SIGN: ${{ inputs.publish_release }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          APPLE_CERT_PRESENT: ${{ steps.apple_cert.outputs.present }}
         run: |
+          # Only sign when packaging a release and the Developer ID material is available.
+          # Otherwise codesign fails with: "The specified item could not be found in the keychain."
+          if [[ "${PUBLISH_RELEASE}" == "true" && "${APPLE_CERT_PRESENT}" == "true" ]]; then
+            export SHOULD_SIGN=true
+          else
+            export SHOULD_SIGN=false
+            echo "Skipping codesign (publish_release=${PUBLISH_RELEASE}, cert_present=${APPLE_CERT_PRESENT})."
+          fi
+
           # build DMG and sign everything (see cmake/packaging/macos.cmake)
           # cpack can rarely fail with "hdiutil: create failed - Resource busy"
           # so let's allow 1 retry
@@ -225,8 +239,10 @@ jobs:
         id: artifact_prefix
         env:
           INPUTS_PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          APPLE_CERT_PRESENT: ${{ steps.apple_cert.outputs.present }}
         run: |
-          if [[ "${INPUTS_PUBLISH_RELEASE}" == "true" ]]; then
+          # "unsigned" means the DMG was Developer ID signed and awaits notarization/staple.
+          if [[ "${INPUTS_PUBLISH_RELEASE}" == "true" && "${APPLE_CERT_PRESENT}" == "true" ]]; then
             echo "prefix=unsigned" >> "${GITHUB_OUTPUT}"
           else
             echo "prefix=build" >> "${GITHUB_OUTPUT}"
@@ -261,12 +277,13 @@ jobs:
         id: apple_cert
         env:
           APPLE_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 }}
+          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
         run: |
-          if [[ -n "${APPLE_CERT_BASE64}" ]]; then
+          if [[ -n "${APPLE_CERT_BASE64}" && -n "${APPLE_CODESIGN_IDENTITY}" ]]; then
             echo "present=true" >> "${GITHUB_OUTPUT}"
           else
             echo "present=false" >> "${GITHUB_OUTPUT}"
-            echo "Apple certificate secret is empty; skipping notarization."
+            echo "Apple signing secrets incomplete; skipping notarization."
           fi
 
       - name: Install Apple certificate
