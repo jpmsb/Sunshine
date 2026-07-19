@@ -459,9 +459,9 @@ cmake "${cmake_args[@]}"
 make -j$(nproc) -C "%{_builddir}/Sunshine/build"
 
 %check
-# validate the metainfo file
+# validate the metainfo file (offline: remote screenshots may be unreachable in CI)
 appstreamcli validate --no-net %{buildroot}%{_metainfodir}/*.metainfo.xml
-appstream-util validate %{buildroot}%{_metainfodir}/*.metainfo.xml
+appstream-util validate --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop
 
 # run tests under Xvfb only; unset Wayland session vars so platf::init() enables X11 capture
