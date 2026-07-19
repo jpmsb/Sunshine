@@ -568,6 +568,7 @@
     "client_notification_name": "Name",
     "client_notification_ip": "IP",
     "client_notification_port": "Port",
+    "client_notification_monitor": "Monitor",
     "pairing_request_title": "Pairing Request",
     "pairing_request_action": "Click here to enter the PIN.",
     "pairing_request_action_stdin": "Enter the PIN shown in Moonlight in the Sunshine terminal.",
