@@ -22,6 +22,7 @@
 
 // local includes
 #include "audio.h"
+#include "config.h"
 #include "platform/common.h"
 #include "rtsp.h"
 
@@ -841,6 +842,27 @@ namespace display_device {
 #endif
 
     return mapped_name;
+  }
+
+  std::string configured_output_display_name() {
+    const auto &output_name = config::video.output_name;
+
+    // Prefer the friendly name from the display-device enumeration when the
+    // configured output matches a known device id.
+    if (!output_name.empty()) {
+      for (const auto &device : enumerate_devices()) {
+        if (device.m_device_id == output_name && !device.m_friendly_name.empty()) {
+          return device.m_friendly_name;
+        }
+      }
+    }
+
+    const auto mapped_name = map_output_name(output_name);
+    if (!mapped_name.empty()) {
+      return mapped_name;
+    }
+
+    return output_name;
   }
 
   void configure_display(const config::video_t &video_config, const rtsp_stream::launch_session_t &session) {
