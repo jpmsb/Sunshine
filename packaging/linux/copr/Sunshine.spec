@@ -105,6 +105,7 @@ BuildRequires: python311
 BuildRequires: python311-Jinja2
 %else
 # OpenSUSE Tumbleweed (suse_version may equal Leap; sle_version is unset)
+BuildRequires: libxml2-16
 BuildRequires: npm-default
 BuildRequires: python313
 BuildRequires: python313-Jinja2
@@ -310,6 +311,23 @@ function install_cuda() {
     --tries=3 \
     -q -O "%{_builddir}/cuda.run"
   chmod a+x "%{_builddir}/cuda.run"
+
+  # openSUSE Tumbleweed provides libxml2.so.16; the NVIDIA cuda-installer still requires libxml2.so.2.
+  if ! ldconfig -p 2>/dev/null | grep -q 'libxml2\.so\.2 '; then
+    for libdir in /usr/lib64 /usr/lib /lib64 /lib; do
+      if [ -e "${libdir}/libxml2.so.2" ]; then
+        break
+      fi
+      for candidate in "${libdir}"/libxml2.so.*; do
+        if [ -e "${candidate}" ]; then
+          echo "Creating CUDA compatibility symlink: ${libdir}/libxml2.so.2 -> ${candidate}"
+          ln -sfn "$(basename "${candidate}")" "${libdir}/libxml2.so.2"
+          break 2
+        fi
+      done
+    done
+  fi
+
   "%{_builddir}/cuda.run" \
     --no-drm \
     --no-man-page \
