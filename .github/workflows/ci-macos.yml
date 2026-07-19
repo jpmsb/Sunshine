@@ -64,7 +64,9 @@ jobs:
     steps:
       - name: Install Apple certificate
         uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466  # v7.0.0
-        if: inputs.publish_release == 'true'
+        if: >-
+          inputs.publish_release == 'true' &&
+          secrets.APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 != ''
         with:
           p12-file-base64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 }}
           p12-password: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_P12_PASSWORD }}
@@ -229,7 +231,9 @@ jobs:
   notarize_dmg:
     name: Notarize ${{ matrix.name }}
     needs: build_dmg
-    if: inputs.publish_release == 'true'
+    if: >-
+      inputs.publish_release == 'true' &&
+      secrets.APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 != ''
     permissions:
       contents: read
     runs-on: ${{ matrix.os }}
