@@ -83,6 +83,20 @@ TEST(SessionManagementTest, FormatClientNotificationBodyZeroPort) {
   );
 }
 
+TEST(SessionManagementTest, FormatClientNotificationBodyWithMonitor) {
+  EXPECT_EQ(
+    stream::session::format_client_notification_body("192.168.1.10", 47998, "Phone", "Dell U2720Q"),
+    "Name: Phone\nIP: 192.168.1.10\nPort: 47998\nMonitor: Dell U2720Q"
+  );
+}
+
+TEST(SessionManagementTest, FormatClientNotificationBodyMonitorLastLineWithoutName) {
+  EXPECT_EQ(
+    stream::session::format_client_notification_body("192.168.1.10", 47998, "", "HDMI-A-1"),
+    "IP: 192.168.1.10\nPort: 47998\nMonitor: HDMI-A-1"
+  );
+}
+
 TEST(SessionManagementTest, FormatPairingRequestNotificationBody) {
   EXPECT_EQ(
     stream::session::format_pairing_request_notification_body("192.168.1.10", 47984, "Click here to enter the PIN."),
