@@ -40,6 +40,11 @@ to be created before making a stable release. Below are the instructions for con
      [Winget repo](https://github.com/microsoft/winget-pkgs/issues?q=is%3Apr%20is%3Aopen%20author%3ALizardByte-bot)
      via a PR (we DO NOT have merge control)
    - Build the new version in [stable copr repo](https://copr.fedorainfracloud.org/coprs/lizardbyte/stable/)
+   - Submit sources to the optional OBS project (workflow
+     [Update OBS repo](https://github.com/LizardByte/Sunshine/actions/workflows/_update-obs-repo.yml))
+     when `OBS_USER` / `OBS_PASSWORD` secrets and `OBS_PROJECT` variable are configured.
+     openSUSE Tumbleweed RPMs attached to the GitHub release are produced earlier by the main CI
+     job on GitHub Actions (x86_64 and aarch64), not by OBS.
    - Send release notification to Moonlight Discord server
 
 6. X (Twitter) API is no longer free, so we must manually post the release there.
