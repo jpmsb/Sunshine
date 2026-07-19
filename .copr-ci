@@ -1,0 +1,9 @@
+# Paths excluded from RPM/OBS/COPR source tarballs.
+# Each non-comment line is a repo-relative path passed to tar --exclude.
+# Git submodules listed here are skipped by scripts/build_tumbleweed_rpm.sh.
+
+# Flatpak-only tooling (not used by the RPM spec)
+packaging/linux/flatpak/deps/flatpak-builder-tools
+
+# Prebuilt FFmpeg/Vulkan bundle metadata; CMake downloads FFmpeg releases at build time
+third-party/build-deps
