@@ -10,6 +10,14 @@
 #include <list>
 #include <thread>
 
+// On Windows, Boost.Asio (via stream.h) requires winsock2.h before any header that pulls in windows.h/WinSock.h.
+#ifdef _WIN32
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif
+  #include <winsock2.h>
+#endif
+
 // lib includes
 #include <boost/pointer_cast.hpp>
 
