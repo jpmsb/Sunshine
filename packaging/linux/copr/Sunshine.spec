@@ -281,11 +281,15 @@ function apply_cuda_patches() {
 
   if [ -n "${patch_file}" ]; then
     echo "Applying CUDA patch: ${patch_file}"
+    # -N/--forward ignores an already-applied patch (non-zero exit is OK then).
     patch -p2 \
+      -N \
+      --forward \
       --backup \
       --directory="${toolkit_root}" \
       --verbose \
-      < "%{_builddir}/Sunshine/packaging/linux/patches/${architecture}/${patch_file}"
+      < "%{_builddir}/Sunshine/packaging/linux/patches/${architecture}/${patch_file}" \
+      || echo "CUDA patch ${patch_file} already applied or skipped; continuing."
   fi
 }
 
@@ -337,8 +341,6 @@ function install_cuda() {
     --toolkit \
     --toolkitpath="%{cuda_dir}"
   rm "%{_builddir}/cuda.run"
-
-  apply_cuda_patches "%{cuda_dir}"
 }
 
 function detect_nvcc_path() {
