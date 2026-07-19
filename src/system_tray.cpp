@@ -6,7 +6,7 @@
 #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
 
   #if defined(_WIN32)
-    #define WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN  ///< Exclude rarely-used Windows headers from winsock/windows includes.
     #include <accctrl.h>
     #include <aclapi.h>
   #elif defined(__APPLE__) || defined(__MACH__)
@@ -157,26 +157,32 @@ namespace system_tray {
   static std::vector<tray_menu> tray_root_menu;
   static std::vector<std::unique_ptr<tray_session_action_t>> tray_session_action_contexts;
 
+  /**
+   * @brief Kind of deferred tray UI work queued for the tray thread.
+   */
   enum class tray_pending_kind_e {
-    refresh_menu,
-    notify_connected,
-    notify_disconnected,
-    notify_paused,
-    notify_resumed,
-    set_streaming_active,
-    set_pausing_icon,
-    update_pausing,
-    update_stopped,
-    notify_pairing,
-    clear_pairing,
+    refresh_menu,  ///< Rebuild the tray menu.
+    notify_connected,  ///< Show a client-connected notification.
+    notify_disconnected,  ///< Show a client-disconnected notification.
+    notify_paused,  ///< Show a stream-paused notification.
+    notify_resumed,  ///< Show a stream-resumed notification.
+    set_streaming_active,  ///< Toggle the streaming-active tray icon state.
+    set_pausing_icon,  ///< Switch to the pausing tray icon.
+    update_pausing,  ///< Refresh pausing status text/icon.
+    update_stopped,  ///< Refresh stopped/idle status text/icon.
+    notify_pairing,  ///< Show a pairing-request notification.
+    clear_pairing,  ///< Clear pairing notification state.
   };
 
+  /**
+   * @brief One deferred tray update waiting to be applied on the tray thread.
+   */
   struct tray_pending_item_t {
-    tray_pending_kind_e kind;
-    std::string text;
-    bool active = false;
-    uint32_t session_id = 0;
-    bool has_session_actions = false;
+    tray_pending_kind_e kind;  ///< Type of pending tray work.
+    std::string text;  ///< Optional notification or status text payload.
+    bool active = false;  ///< Optional boolean flag for icon/state updates.
+    uint32_t session_id = 0;  ///< Optional RTSP session id for session actions.
+    bool has_session_actions = false;  ///< Whether session pause/disconnect actions apply.
   };
 
   static std::atomic<bool> tray_has_pending = false;
@@ -224,11 +230,11 @@ namespace system_tray {
     .allIconPaths = {nullptr, nullptr, nullptr, nullptr},
   };
 
-  #define TRAY_ICON tray_icon_default.c_str()
-  #define TRAY_ICON_PLAYING tray_icon_playing.c_str()
-  #define TRAY_ICON_PAUSING tray_icon_pausing.c_str()
-  #define TRAY_ICON_LOCKED tray_icon_locked.c_str()
-  #define TRAY_ICON_DISCONNECTED tray_icon_disconnected.c_str()
+  #define TRAY_ICON tray_icon_default.c_str()  ///< Default/idle tray icon path.
+  #define TRAY_ICON_PLAYING tray_icon_playing.c_str()  ///< Streaming-active tray icon path.
+  #define TRAY_ICON_PAUSING tray_icon_pausing.c_str()  ///< Stream-pausing tray icon path.
+  #define TRAY_ICON_LOCKED tray_icon_locked.c_str()  ///< PIN-entry/locked tray icon path.
+  #define TRAY_ICON_DISCONNECTED tray_icon_disconnected.c_str()  ///< Disconnected tray icon path.
 
   /**
    * @brief Clear notification fields so tray_update does not re-show stale notifications.
@@ -340,6 +346,11 @@ namespace system_tray {
     tray.icon = tray.allIconPaths[0];
   }
 
+  /**
+   * @brief Handle pause, resume, or disconnect actions from a session tray submenu item.
+   *
+   * @param item Tray menu item whose context points to a tray_session_action_t.
+   */
   void tray_session_action_cb(struct tray_menu *item) {
     if (!item || !item->context) {
       return;
