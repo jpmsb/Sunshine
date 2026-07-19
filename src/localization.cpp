@@ -92,6 +92,7 @@ namespace localization {
         {cache_key("troubleshooting", "client_notification_name"), "Name"},
         {cache_key("troubleshooting", "client_notification_ip"), "IP"},
         {cache_key("troubleshooting", "client_notification_port"), "Port"},
+        {cache_key("troubleshooting", "client_notification_monitor"), "Monitor"},
         {cache_key("troubleshooting", "pairing_request_title"), "Pairing Request"},
         {cache_key("troubleshooting", "pairing_request_action"), "Click here to enter the PIN."},
         {cache_key("troubleshooting", "pairing_request_action_stdin"), "Enter the PIN shown in Moonlight in the Sunshine terminal."},
