@@ -179,6 +179,12 @@ install(FILES "${CMAKE_SOURCE_DIR}/sunshine.svg"
         DESTINATION "${SUNSHINE_ASSETS_DIR}/web/images"
         RENAME "logo-sunshine.svg")
 
+# copy application logo into build assets for running without install (tray idle icon)
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/assets/web/images")
+file(COPY_FILE "${CMAKE_SOURCE_DIR}/sunshine.svg"
+        "${CMAKE_BINARY_DIR}/assets/web/images/logo-sunshine.svg"
+        ONLY_IF_DIFFERENT)
+
 # tray icon
 if(${SUNSHINE_TRAY} STREQUAL 1)
     # Icons used by the Qt tray backend are no longer installed to the hicolor icon theme,
