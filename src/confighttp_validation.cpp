@@ -25,15 +25,15 @@ namespace confighttp_validation {
 
   using namespace std::literals;
 
-  constexpr std::size_t MAX_APP_STRING_LENGTH = 4096;
-  constexpr std::size_t MAX_APP_NAME_LENGTH = 256;
-  constexpr std::size_t MAX_USERNAME_LENGTH = 64;
-  constexpr std::size_t MIN_PASSWORD_LENGTH = 4;
-  constexpr std::size_t MAX_PASSWORD_LENGTH = 128;
-  constexpr std::size_t MAX_COVER_KEY_LENGTH = 128;
+  constexpr std::size_t MAX_APP_STRING_LENGTH = 4096;  ///< Max length for generic application string fields.
+  constexpr std::size_t MAX_APP_NAME_LENGTH = 256;  ///< Max length for an application display name.
+  constexpr std::size_t MAX_USERNAME_LENGTH = 64;  ///< Max length for Web UI usernames.
+  constexpr std::size_t MIN_PASSWORD_LENGTH = 4;  ///< Minimum Web UI password length.
+  constexpr std::size_t MAX_PASSWORD_LENGTH = 128;  ///< Maximum Web UI password length.
+  constexpr std::size_t MAX_COVER_KEY_LENGTH = 128;  ///< Max length for cover upload keys.
 
-  constexpr std::size_t MAX_AUTH_FAILURES_PER_ADDRESS = 5;
-  constexpr auto AUTH_LOCKOUT_DURATION = std::chrono::minutes(15);
+  constexpr std::size_t MAX_AUTH_FAILURES_PER_ADDRESS = 5;  ///< Failed logins before temporary lockout.
+  constexpr auto AUTH_LOCKOUT_DURATION = std::chrono::minutes(15);  ///< Duration of an auth lockout window.
 
   /**
    * @brief Track failed authentication attempts per remote address.
@@ -601,6 +601,12 @@ namespace confighttp_validation {
     });
   }
 
+  /**
+   * @brief Return whether a directory path may be listed by browseDirectory.
+   *
+   * @param dir_path Candidate directory path from the Web UI.
+   * @return False when the path resolves under a blocked system prefix.
+   */
   bool is_browse_path_allowed(const fs::path &dir_path) {
     std::error_code ec;
     const fs::path canonical_path = fs::weakly_canonical(dir_path, ec);
