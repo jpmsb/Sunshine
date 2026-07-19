@@ -295,6 +295,7 @@ namespace system_tray {
     tray.notification_cb = paused ? tray_notification_resume_cb : tray_notification_pause_cb;
   }
 
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(__MACH__)
   /**
    * @brief Resolve the first existing tray icon path from a candidate list.
    *
@@ -313,6 +314,7 @@ namespace system_tray {
 
     return web + fallback;
   }
+#endif
 
   /**
    * @brief Resolve tray icon paths from the runtime Web UI assets directory.
