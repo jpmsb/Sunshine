@@ -16,6 +16,7 @@
   #endif
 
   // standard includes
+  #include <array>
   #include <atomic>
   #include <csignal>
   #include <deque>
@@ -50,6 +51,8 @@ using namespace std::literals;
 // system_tray namespace
 namespace system_tray {
   static std::atomic tray_initialized = false;
+
+  void refresh_connected_clients_menu();
 
   void tray_open_ui_cb([[maybe_unused]] struct tray_menu *item) {
     BOOST_LOG(info) << "Opening UI from system tray"sv;
@@ -172,20 +175,28 @@ namespace system_tray {
     tray_pending_kind_e kind;
     std::string text;
     bool active = false;
+    uint32_t session_id = 0;
+    bool has_session_actions = false;
   };
 
   static std::atomic<bool> tray_has_pending = false;
   static std::mutex tray_pending_mutex;
   static std::deque<tray_pending_item_t> tray_pending_queue;
 
-  static void enqueue_tray_update(tray_pending_kind_e kind, std::string text = {}, bool active = false) {
+  static void enqueue_tray_update(
+    tray_pending_kind_e kind,
+    std::string text = {},
+    bool active = false,
+    uint32_t session_id = 0,
+    bool has_session_actions = false
+  ) {
     if (!tray_initialized) {
       return;
     }
 
     {
       const std::lock_guard lock {tray_pending_mutex};
-      tray_pending_queue.push_back({kind, std::move(text), active});
+      tray_pending_queue.push_back({kind, std::move(text), active, session_id, has_session_actions});
     }
     tray_has_pending = true;
   }
@@ -227,6 +238,55 @@ namespace system_tray {
     tray.notification_text = nullptr;
     tray.notification_cb = nullptr;
     tray.notification_icon = nullptr;
+    tray.notification_actions = nullptr;
+  }
+
+  static std::atomic<uint32_t> tray_notification_session_id {0};
+  static std::array<tray_notification_action, 3> tray_notification_action_storage {};
+  static std::string tray_notification_pause_label;
+  static std::string tray_notification_resume_label;
+  static std::string tray_notification_disconnect_label;
+
+  static void tray_notification_pause_cb() {
+    rtsp_stream::pause_session(tray_notification_session_id.load());
+    refresh_connected_clients_menu();
+  }
+
+  static void tray_notification_resume_cb() {
+    rtsp_stream::resume_session(tray_notification_session_id.load());
+    refresh_connected_clients_menu();
+  }
+
+  static void tray_notification_disconnect_cb() {
+    rtsp_stream::terminate_session(tray_notification_session_id.load());
+    refresh_connected_clients_menu();
+  }
+
+  /**
+   * @brief Configure Pause/Resume and Disconnect actions for a session notification.
+   *
+   * @param session_id Launch-session identifier targeted by the actions.
+   * @param paused True when the session is paused (shows Resume instead of Pause).
+   */
+  static void configure_session_notification_actions(uint32_t session_id, bool paused) {
+    tray_notification_session_id.store(session_id);
+    tray_notification_pause_label = localization::ui_string("troubleshooting", "connected_clients_pause");
+    tray_notification_resume_label = localization::ui_string("troubleshooting", "connected_clients_resume");
+    tray_notification_disconnect_label = localization::ui_string("troubleshooting", "connected_clients_disconnect");
+
+    tray_notification_action_storage[0] = {
+      .text = paused ? tray_notification_resume_label.c_str() : tray_notification_pause_label.c_str(),
+      .cb = paused ? tray_notification_resume_cb : tray_notification_pause_cb,
+    };
+    tray_notification_action_storage[1] = {
+      .text = tray_notification_disconnect_label.c_str(),
+      .cb = tray_notification_disconnect_cb,
+    };
+    tray_notification_action_storage[2] = {.text = nullptr, .cb = nullptr};
+
+    tray.notification_actions = tray_notification_action_storage.data();
+    // Windows balloon notifications only support a single click callback.
+    tray.notification_cb = paused ? tray_notification_resume_cb : tray_notification_pause_cb;
   }
 
   /**
@@ -280,13 +340,6 @@ namespace system_tray {
     tray.icon = tray.allIconPaths[0];
   }
 
-  void refresh_connected_clients_menu();
-
-  /**
-   * @brief Handle pause, resume, and disconnect actions from the tray menu.
-   *
-   * @param item Tray menu item that was activated.
-   */
   void tray_session_action_cb(struct tray_menu *item) {
     if (!item || !item->context) {
       return;
@@ -414,7 +467,7 @@ namespace system_tray {
     tray_update(&tray);
   }
 
-  static void apply_notify_client_connected(const std::string &body) {
+  static void apply_notify_client_connected(const std::string &body, uint32_t session_id, bool has_session_actions) {
     clear_tray_notification_fields();
     tray_update(&tray);
 
@@ -424,6 +477,9 @@ namespace system_tray {
     tray.notification_title = "Client Connected";
     tray.notification_text = notification_body.c_str();
     tray.notification_icon = TRAY_ICON_PLAYING;
+    if (has_session_actions) {
+      configure_session_notification_actions(session_id, false);
+    }
     tray_update(&tray);
 
     clear_tray_notification_fields();
@@ -444,7 +500,7 @@ namespace system_tray {
     clear_tray_notification_fields();
   }
 
-  static void apply_notify_client_paused(const std::string &body) {
+  static void apply_notify_client_paused(const std::string &body, uint32_t session_id, bool has_session_actions) {
     clear_tray_notification_fields();
     tray_update(&tray);
 
@@ -454,12 +510,15 @@ namespace system_tray {
     tray.notification_title = "Client Paused";
     tray.notification_text = notification_body.c_str();
     tray.notification_icon = TRAY_ICON_PAUSING;
+    if (has_session_actions) {
+      configure_session_notification_actions(session_id, true);
+    }
     tray_update(&tray);
 
     clear_tray_notification_fields();
   }
 
-  static void apply_notify_client_resumed(const std::string &body) {
+  static void apply_notify_client_resumed(const std::string &body, uint32_t session_id, bool has_session_actions) {
     clear_tray_notification_fields();
     tray_update(&tray);
 
@@ -469,6 +528,9 @@ namespace system_tray {
     tray.notification_title = "Client Resumed";
     tray.notification_text = notification_body.c_str();
     tray.notification_icon = TRAY_ICON_PLAYING;
+    if (has_session_actions) {
+      configure_session_notification_actions(session_id, false);
+    }
     tray_update(&tray);
 
     clear_tray_notification_fields();
@@ -523,7 +585,7 @@ namespace system_tray {
           apply_refresh_connected_clients_menu();
           break;
         case tray_pending_kind_e::notify_connected:
-          apply_notify_client_connected(item.text);
+          apply_notify_client_connected(item.text, item.session_id, item.has_session_actions);
           apply_refresh_connected_clients_menu();
           break;
         case tray_pending_kind_e::notify_disconnected:
@@ -531,11 +593,11 @@ namespace system_tray {
           apply_refresh_connected_clients_menu();
           break;
         case tray_pending_kind_e::notify_paused:
-          apply_notify_client_paused(item.text);
+          apply_notify_client_paused(item.text, item.session_id, item.has_session_actions);
           apply_refresh_connected_clients_menu();
           break;
         case tray_pending_kind_e::notify_resumed:
-          apply_notify_client_resumed(item.text);
+          apply_notify_client_resumed(item.text, item.session_id, item.has_session_actions);
           apply_refresh_connected_clients_menu();
           break;
         case tray_pending_kind_e::set_streaming_active:
@@ -767,31 +829,43 @@ namespace system_tray {
     enqueue_tray_update(tray_pending_kind_e::set_streaming_active, {}, active);
   }
 
-  void notify_client_connected(const std::string &name, const std::string &address, uint16_t port) {
+  void notify_client_connected(const std::string &name, const std::string &address, uint16_t port, uint32_t session_id) {
     enqueue_tray_update(
       tray_pending_kind_e::notify_connected,
-      stream::session::format_client_notification_body(address, port, name)
+      stream::session::format_client_notification_body(address, port, name, display_device::configured_output_display_name()),
+      false,
+      session_id,
+      true
     );
   }
 
-  void notify_client_disconnected(const std::string &name, const std::string &address, uint16_t port) {
+  void notify_client_disconnected(const std::string &name, const std::string &address, uint16_t port, uint32_t session_id) {
     enqueue_tray_update(
       tray_pending_kind_e::notify_disconnected,
-      stream::session::format_client_notification_body(address, port, name)
+      stream::session::format_client_notification_body(address, port, name, display_device::configured_output_display_name()),
+      false,
+      session_id,
+      false
     );
   }
 
-  void notify_client_paused(const std::string &name, const std::string &address, uint16_t port) {
+  void notify_client_paused(const std::string &name, const std::string &address, uint16_t port, uint32_t session_id) {
     enqueue_tray_update(
       tray_pending_kind_e::notify_paused,
-      stream::session::format_client_notification_body(address, port, name)
+      stream::session::format_client_notification_body(address, port, name, display_device::configured_output_display_name()),
+      false,
+      session_id,
+      true
     );
   }
 
-  void notify_client_resumed(const std::string &name, const std::string &address, uint16_t port) {
+  void notify_client_resumed(const std::string &name, const std::string &address, uint16_t port, uint32_t session_id) {
     enqueue_tray_update(
       tray_pending_kind_e::notify_resumed,
-      stream::session::format_client_notification_body(address, port, name)
+      stream::session::format_client_notification_body(address, port, name, display_device::configured_output_display_name()),
+      false,
+      session_id,
+      true
     );
   }
 
