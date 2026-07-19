@@ -1,0 +1,6 @@
+<services>
+  <!--
+    Sources are submitted by CI via scripts/obs_submit.sh using prepare_rpm_source.sh.
+    obs_scm is intentionally not used because Sunshine requires git submodules.
+  -->
+</services>
