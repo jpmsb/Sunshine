@@ -215,27 +215,39 @@ jobs:
       - name: Debug
         if: always()
         shell: bash
-        working-directory: build/cpack_artifacts/_CPack_Packages/FreeBSD/FREEBSD/Sunshine
         run: |
           echo "FreeBSD CPack Debug"
-          echo "===== Staging Directory Contents ====="
-          ls -la
-          echo ""
-          echo "===== +MANIFEST Content ====="
-          cat +MANIFEST
-          echo ""
+          staging_dir="build/cpack_artifacts/_CPack_Packages/FreeBSD/FREEBSD/Sunshine"
+          pkg_file="artifacts/Sunshine-FreeBSD-${{ matrix.bsd_release }}-${{ matrix.cmake_processor }}.pkg"
 
-          # use tar to print the contents of the pkg
-          cd "${GITHUB_WORKSPACE}/artifacts"
-          echo "===== Package Contents ====="
-          tar -tvf Sunshine-FreeBSD-${{ matrix.bsd_release }}-${{ matrix.cmake_processor }}.pkg
-          echo ""
-          echo "===== Package Statistics ====="
-          echo -n "Total files in package: "
-          tar -tf Sunshine-FreeBSD-${{ matrix.bsd_release }}-${{ matrix.cmake_processor }}.pkg 2>&1 | wc -l
-          echo ""
-          echo "Package file size:"
-          ls -lh Sunshine-FreeBSD-${{ matrix.bsd_release }}-${{ matrix.cmake_processor }}.pkg
+          if [[ -d "${staging_dir}" ]]; then
+            echo "===== Staging Directory Contents ====="
+            ls -la "${staging_dir}"
+            echo ""
+            if [[ -f "${staging_dir}/+MANIFEST" ]]; then
+              echo "===== +MANIFEST Content ====="
+              cat "${staging_dir}/+MANIFEST"
+              echo ""
+            else
+              echo "+MANIFEST not found in staging directory."
+            fi
+          else
+            echo "Staging directory not found: ${staging_dir}"
+          fi
+
+          if [[ -f "${pkg_file}" ]]; then
+            echo "===== Package Contents ====="
+            tar -tvf "${pkg_file}"
+            echo ""
+            echo "===== Package Statistics ====="
+            echo -n "Total files in package: "
+            tar -tf "${pkg_file}" 2>&1 | wc -l
+            echo ""
+            echo "Package file size:"
+            ls -lh "${pkg_file}"
+          else
+            echo "Package file not found: ${pkg_file}"
+          fi
 
       - name: Test
         id: test
