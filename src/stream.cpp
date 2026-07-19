@@ -747,7 +747,7 @@ namespace stream {
               nvhttp::touch_client_endpoint(metadata.uuid, endpoint.first, endpoint.second);
             }
 #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
-            system_tray::notify_client_connected(metadata.name, endpoint.first, endpoint.second);
+            system_tray::notify_client_connected(metadata.name, endpoint.first, endpoint.second, session->launch_session_id);
 #endif
           }
           break;
@@ -2254,10 +2254,11 @@ namespace stream {
     /**
      * @brief Build a multiline notification body for client connect/disconnect events.
      */
-    std::string format_client_notification_body(const std::string &address, uint16_t port, const std::string &name) {
+    std::string format_client_notification_body(const std::string &address, uint16_t port, const std::string &name, const std::string &monitor_name) {
       const auto name_label = localization::ui_string("troubleshooting", "client_notification_name");
       const auto ip_label = localization::ui_string("troubleshooting", "client_notification_ip");
       const auto port_label = localization::ui_string("troubleshooting", "client_notification_port");
+      const auto monitor_label = localization::ui_string("troubleshooting", "client_notification_monitor");
 
       std::string body;
       if (!name.empty()) {
@@ -2265,6 +2266,9 @@ namespace stream {
       }
       body += std::format("{}: {}\n", ip_label, address);
       body += std::format("{}: {}", port_label, port);
+      if (!monitor_name.empty()) {
+        body += std::format("\n{}: {}", monitor_label, monitor_name);
+      }
       return body;
     }
 
