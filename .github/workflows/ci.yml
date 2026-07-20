@@ -44,6 +44,8 @@ jobs:
 
   build-docker:
     name: Docker
+    # Docker Hub login requires org secrets; skip on forks.
+    if: startsWith(github.repository, 'LizardByte/')
     needs: release-setup
     permissions:
       contents: read
