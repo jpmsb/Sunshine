@@ -513,4 +513,31 @@ namespace {
       EXPECT_EQ(parsed_config.m_refresh_rate, expected_refresh_rate ? std::make_optional(display_device::FloatingPoint {*expected_refresh_rate}) : std::nullopt);
     }
   }
+
+  TEST(DisplayDeviceConfigTest, ConfiguredOutputDisplayNameEmptyUsesFallback) {
+    const auto original_output_name = config::video.output_name;
+    config::video.output_name.clear();
+
+    const auto platform_displays = platf::display_names(platf::mem_type_e::unknown);
+    const auto resolved_name = display_device::configured_output_display_name();
+
+    config::video.output_name = original_output_name;
+
+    if (platform_displays.empty() && display_device::enumerate_devices().empty()) {
+      GTEST_SKIP() << "No platform or enumerated displays available for fallback resolution test.";
+    }
+
+    EXPECT_FALSE(resolved_name.empty());
+  }
+
+  TEST(DisplayDeviceConfigTest, ConfiguredOutputDisplayNameExplicitDoesNotUseFallback) {
+    const auto original_output_name = config::video.output_name;
+    config::video.output_name = "SomeId";
+
+    const auto resolved_name = display_device::configured_output_display_name();
+
+    config::video.output_name = original_output_name;
+
+    EXPECT_EQ(resolved_name, "SomeId");
+  }
 }  // namespace
