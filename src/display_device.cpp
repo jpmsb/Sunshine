@@ -760,6 +760,65 @@ namespace display_device {
       },
                                     scheduler_option);
     }
+
+    /**
+     * @brief Pick the best human-readable label from an enumerated device entry.
+     * @param device Enumerated display device.
+     * @return Friendly name, platform display name, device id, or an empty string.
+     */
+    [[nodiscard]] std::string display_label_from_device(const EnumeratedDevice &device) {
+      if (!device.m_friendly_name.empty()) {
+        return device.m_friendly_name;
+      }
+
+      if (!device.m_display_name.empty()) {
+        return device.m_display_name;
+      }
+
+      if (!device.m_device_id.empty()) {
+        return device.m_device_id;
+      }
+
+      return {};
+    }
+
+    /**
+     * @brief Resolve a fallback label from libdisplaydevice enumeration.
+     * @param devices Enumerated display devices.
+     * @return Primary display label when available, otherwise the first readable label.
+     */
+    [[nodiscard]] std::string fallback_display_label_from_enumeration(const EnumeratedDeviceList &devices) {
+      for (const auto &device : devices) {
+        if (device.m_info && device.m_info->m_primary) {
+          const auto label = display_label_from_device(device);
+          if (!label.empty()) {
+            return label;
+          }
+        }
+      }
+
+      for (const auto &device : devices) {
+        const auto label = display_label_from_device(device);
+        if (!label.empty()) {
+          return label;
+        }
+      }
+
+      return {};
+    }
+
+    /**
+     * @brief Resolve a fallback label from the platform capture backend.
+     * @return First platform capture selector, matching auto capture selection.
+     */
+    [[nodiscard]] std::string fallback_display_label_from_platform() {
+      const auto display_names = platf::display_names(platf::mem_type_e::unknown);
+      if (display_names.empty()) {
+        return {};
+      }
+
+      return display_names.front();
+    }
   }  // namespace
 
   std::unique_ptr<platf::deinit_t> init(const std::filesystem::path &persistence_filepath, const config::video_t &video_config) {
@@ -860,6 +919,19 @@ namespace display_device {
     const auto mapped_name = map_output_name(output_name);
     if (!mapped_name.empty()) {
       return mapped_name;
+    }
+
+    if (output_name.empty()) {
+      const auto devices = enumerate_devices();
+      const auto enumerated_fallback = fallback_display_label_from_enumeration(devices);
+      if (!enumerated_fallback.empty()) {
+        return enumerated_fallback;
+      }
+
+      const auto platform_fallback = fallback_display_label_from_platform();
+      if (!platform_fallback.empty()) {
+        return platform_fallback;
+      }
     }
 
     return output_name;
