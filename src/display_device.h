@@ -55,8 +55,10 @@ namespace display_device {
 
   /**
    * @brief Resolve a human-readable label for the configured capture output.
-   * @return Friendly monitor name when available, otherwise the mapped output name,
-   *         or an empty string when no output can be resolved.
+   * @return Friendly monitor name when available, otherwise the mapped output name.
+   *         When `output_name` is empty (auto), falls back to the primary enumerated
+   *         display, then the first enumerated display, then the first platform capture
+   *         selector from `platf::display_names`.
    */
   [[nodiscard]] std::string configured_output_display_name();
 
