@@ -309,9 +309,23 @@ jobs:
 
   release:
     name: Release
-    if:
+    # Forks skip build-docker (no Docker Hub secrets); allow skipped docker so release can still run.
+    # jpmsb/Sunshine is allowed to publish GitHub Releases from this fork.
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.release-setup.result == 'success' &&
       needs.release-setup.outputs.publish_release == 'true' &&
-      startsWith(github.repository, 'LizardByte/')
+      (github.repository == 'jpmsb/Sunshine' || startsWith(github.repository, 'LizardByte/')) &&
+      needs.build-archlinux.result == 'success' &&
+      needs.build-opensuse-tumbleweed.result == 'success' &&
+      needs.build-freebsd.result == 'success' &&
+      needs.build-homebrew.result == 'success' &&
+      needs.build-linux.result == 'success' &&
+      needs.build-linux-flatpak.result == 'success' &&
+      needs.build-macos.result == 'success' &&
+      needs.build-windows.result == 'success' &&
+      (needs.build-docker.result == 'success' || needs.build-docker.result == 'skipped')
     needs:
       - release-setup
       - build-archlinux
@@ -324,7 +338,7 @@ jobs:
       - build-macos
       - build-windows
     permissions:
-      contents: read
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Download build artifacts
@@ -346,7 +360,7 @@ jobs:
           name: ${{ needs.release-setup.outputs.release_tag }}
           prerelease: true
           tag: ${{ needs.release-setup.outputs.release_tag }}
-          token: ${{ secrets.GH_BOT_TOKEN }}
+          token: ${{ secrets.GH_BOT_TOKEN || github.token }}
           virustotal_api_key: ${{ secrets.VIRUSTOTAL_API_KEY }}
 
   release-homebrew-beta:
