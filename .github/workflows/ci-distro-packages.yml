@@ -1,0 +1,119 @@
+---
+# Build distro .deb packages on GitHub Actions (Ubuntu/Debian containers).
+# Used when build-docker is skipped (e.g. forks without Docker Hub secrets).
+name: CI-Distro-Packages
+permissions: {}
+
+on:
+  workflow_call:
+    inputs:
+      release_commit:
+        required: true
+        type: string
+      release_version:
+        required: true
+        type: string
+
+jobs:
+  build_deb:
+    name: ${{ matrix.name }}
+    timeout-minutes: 120
+    env:
+      BRANCH: ${{ github.head_ref || github.ref_name }}
+      BUILD_VERSION: ${{ inputs.release_version }}
+      COMMIT: >-
+        ${{
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.sha ||
+          inputs.release_commit
+        }}
+      DEBIAN_FRONTEND: noninteractive
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu-22.04
+            image: ubuntu:22.04
+            distro: ubuntu
+            tag: "22.04"
+            extra_args: "--ubuntu-test-repo"
+          - name: ubuntu-24.04
+            image: ubuntu:24.04
+            distro: ubuntu
+            tag: "24.04"
+            extra_args: ""
+          - name: debian-trixie
+            image: debian:trixie
+            distro: debian
+            tag: trixie
+            extra_args: "--cuda-patches"
+    container:
+      image: ${{ matrix.image }}
+      options: --cpus 4 --memory 8g
+    steps:
+      - name: Install base tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update -y
+          apt-get install -y --no-install-recommends \
+            ca-certificates \
+            curl \
+            git \
+            sudo
+          apt-get clean
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: recursive
+
+      - name: Build and package
+        env:
+          EXTRA_ARGS: ${{ matrix.extra_args }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/linux_build.sh
+          echo "::add-matcher::.github/matchers/gcc.json"
+
+          # EXTRA_ARGS is workflow-controlled (matrix), not untrusted event input.
+          # shellcheck disable=SC2086
+          ./scripts/linux_build.sh \
+            --sudo-off \
+            --publisher-name="${GITHUB_REPOSITORY_OWNER}" \
+            --publisher-website="https://app.lizardbyte.dev" \
+            --publisher-issue-url="https://app.lizardbyte.dev/support" \
+            --skip-cleanup \
+            ${EXTRA_ARGS}
+
+          echo "::remove-matcher owner=gcc::"
+
+      - name: Collect artifacts
+        env:
+          DISTRO: ${{ matrix.distro }}
+          TAG: ${{ matrix.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          src="build/cpack_artifacts/Sunshine.deb"
+          if [[ ! -f "${src}" ]]; then
+            echo "Missing package: ${src}"
+            ls -la build/cpack_artifacts/ || true
+            exit 1
+          fi
+          dest="artifacts/sunshine-${DISTRO}-${TAG}-amd64.deb"
+          cp "${src}" "${dest}"
+          ls -la artifacts/
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: build-Linux-${{ matrix.name }}
+          path: artifacts/
+          if-no-files-found: error
