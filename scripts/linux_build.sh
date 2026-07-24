@@ -601,9 +601,11 @@ function run_step_deps() {
   # Install the dependencies
   $package_install_command "${dependencies[@]}"
 
-  # reload the environment
+  # reload the environment (skip if missing; GHA containers often have no ~/.bashrc)
   # shellcheck source=/dev/null
-  source ~/.bashrc
+  if [[ -f "${HOME}/.bashrc" ]]; then
+    source "${HOME}/.bashrc"
+  fi
 
   #set gcc version based on distros
   export CC=gcc-${gcc_version}
