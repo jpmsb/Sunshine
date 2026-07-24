@@ -30,25 +30,54 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: ubuntu-22.04
+          # amd64
+          - name: ubuntu-22.04-amd64
             image: ubuntu:22.04
             distro: ubuntu
             tag: "22.04"
+            arch: amd64
+            runner: ubuntu-latest
             extra_args: "--ubuntu-test-repo"
-          - name: ubuntu-24.04
+          - name: ubuntu-24.04-amd64
             image: ubuntu:24.04
             distro: ubuntu
             tag: "24.04"
+            arch: amd64
+            runner: ubuntu-latest
             extra_args: ""
-          - name: debian-trixie
+          - name: debian-trixie-amd64
             image: debian:trixie
             distro: debian
             tag: trixie
+            arch: amd64
+            runner: ubuntu-latest
+            extra_args: "--cuda-patches"
+          # arm64 (native runners, same pattern as ci-obs.yml)
+          - name: ubuntu-22.04-arm64
+            image: ubuntu:22.04
+            distro: ubuntu
+            tag: "22.04"
+            arch: arm64
+            runner: ubuntu-22.04-arm
+            extra_args: "--ubuntu-test-repo"
+          - name: ubuntu-24.04-arm64
+            image: ubuntu:24.04
+            distro: ubuntu
+            tag: "24.04"
+            arch: arm64
+            runner: ubuntu-22.04-arm
+            extra_args: ""
+          - name: debian-trixie-arm64
+            image: debian:trixie
+            distro: debian
+            tag: trixie
+            arch: arm64
+            runner: ubuntu-22.04-arm
             extra_args: "--cuda-patches"
     container:
       image: ${{ matrix.image }}
@@ -97,6 +126,7 @@ jobs:
         env:
           DISTRO: ${{ matrix.distro }}
           TAG: ${{ matrix.tag }}
+          ARCH: ${{ matrix.arch }}
         shell: bash
         run: |
           set -euo pipefail
@@ -107,7 +137,7 @@ jobs:
             ls -la build/cpack_artifacts/ || true
             exit 1
           fi
-          dest="artifacts/sunshine-${DISTRO}-${TAG}-amd64.deb"
+          dest="artifacts/sunshine-${DISTRO}-${TAG}-${ARCH}.deb"
           cp "${src}" "${dest}"
           ls -la artifacts/
 
