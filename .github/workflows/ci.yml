@@ -121,6 +121,16 @@ jobs:
       release_commit: ${{ needs.release-setup.outputs.release_commit }}
       release_version: ${{ needs.release-setup.outputs.release_version }}
 
+  build-distro-packages:
+    name: Distro packages
+    needs: release-setup
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-distro-packages.yml
+    with:
+      release_commit: ${{ needs.release-setup.outputs.release_commit }}
+      release_version: ${{ needs.release-setup.outputs.release_version }}
+
   build-archlinux:
     name: Archlinux
     needs: release-setup
@@ -322,6 +332,7 @@ jobs:
       needs.build-freebsd.result == 'success' &&
       needs.build-homebrew.result == 'success' &&
       needs.build-linux.result == 'success' &&
+      needs.build-distro-packages.result == 'success' &&
       needs.build-linux-flatpak.result == 'success' &&
       needs.build-macos.result == 'success' &&
       needs.build-windows.result == 'success' &&
@@ -334,6 +345,7 @@ jobs:
       - build-freebsd
       - build-homebrew
       - build-linux
+      - build-distro-packages
       - build-linux-flatpak
       - build-macos
       - build-windows
