@@ -914,6 +914,21 @@ namespace platf {
   std::vector<std::string> display_names(mem_type_e hwdevice_type);
 
   /**
+   * @brief Drop the live screencast portal session so the next capture opens a fresh picker.
+   *
+   * Used for mid-stream source changes from the system tray. No-op on platforms without
+   * the xdg-desktop-portal screencast backend.
+   */
+  void request_screencast_source_reselect();
+
+  /**
+   * @brief Finish a screencast source reselect after the active display was destroyed.
+   *
+   * Stops the idle PipeWire keepalive. No-op when screencast portal is unavailable.
+   */
+  void finish_screencast_source_reselect();
+
+  /**
    * @brief Check if GPUs/drivers have changed since the last call to this function.
    * @return `true` if a change has occurred or if it is unknown whether a change occurred.
    */
