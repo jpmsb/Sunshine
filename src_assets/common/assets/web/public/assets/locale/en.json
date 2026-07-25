@@ -168,6 +168,8 @@
     "web_ui_bind_address_desc": "Set the IP address used by the Web UI only. If left blank, the Web UI uses the bind address above. Use 127.0.0.1 to keep the Web UI on localhost while exposing GameStream remotely.",
     "capture": "Force a Specific Capture Method",
     "capture_desc": "On automatic mode Sunshine will use the first one that works. NvFBC requires patched nvidia drivers.",
+    "screencast_persist": "Remember ScreenCast Selection",
+    "screencast_persist_desc": "When using ScreenCast (Pipewire), save the selected monitor or window and skip the system picker on later streams. Disabled by default so the picker appears each time.",
     "cert": "Certificate",
     "cert_desc": "The certificate used for the web UI and Moonlight client pairing. For best compatibility, this should have an RSA-2048 public key.",
     "channels": "Maximum Connected Clients",
