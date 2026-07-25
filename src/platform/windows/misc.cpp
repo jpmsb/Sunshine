@@ -1325,6 +1325,22 @@ namespace platf {
   }
 
   /**
+   * @brief Drop the live screencast portal session so the next capture opens a fresh picker.
+   *
+   * No-op on Windows.
+   */
+  void request_screencast_source_reselect() {
+  }
+
+  /**
+   * @brief Finish a screencast source reselect after the active display was destroyed.
+   *
+   * No-op on Windows.
+   */
+  void finish_screencast_source_reselect() {
+  }
+
+  /**
    * @brief Stores state while enumerating top-level Windows windows.
    */
   struct enum_wnd_context_t {
