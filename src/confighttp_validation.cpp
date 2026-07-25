@@ -233,6 +233,7 @@ namespace confighttp_validation {
       "hevc_mode",
       "av1_mode",
       "capture",
+      "screencast_persist",
       "encoder",
       "nvenc_preset",
       "nvenc_twopass",
