@@ -1341,6 +1341,48 @@ namespace platf {
   }
 
   /**
+   * @brief Open a shadow ScreenCast picker without interrupting the current capture.
+   *
+   * No-op on Windows.
+   */
+  void begin_screencast_source_reselect() {
+  }
+
+  /**
+   * @brief Apply a pending screencast session before tearing down the current display.
+   *
+   * @return Always false on Windows.
+   */
+  bool apply_screencast_ready() {
+    return false;
+  }
+
+  /**
+   * @brief Close the previous screencast session after a successful mid-stream swap.
+   *
+   * No-op on Windows.
+   */
+  void finish_screencast_session_swap() {
+  }
+
+  /**
+   * @brief Start (or restart) the background ScreenCast portal picker.
+   *
+   * No-op on Windows.
+   */
+  void start_screencast_bootstrap() {
+  }
+
+  /**
+   * @brief Whether a mid-stream shadow screencast session is waiting to be applied.
+   *
+   * @return Always false on Windows.
+   */
+  bool has_pending_screencast_swap() {
+    return false;
+  }
+
+  /**
    * @brief Stores state while enumerating top-level Windows windows.
    */
   struct enum_wnd_context_t {
