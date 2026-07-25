@@ -149,6 +149,7 @@
   import { initApp } from './init'
   import Navbar from './Navbar.vue'
   import { apiFetch } from './fetch_utils'
+  import { notify } from './Notification.vue'
   import General from './configs/tabs/General.vue'
   import Inputs from './configs/tabs/Inputs.vue'
   import Network from './configs/tabs/Network.vue'
@@ -304,6 +305,7 @@
               "hevc_mode": 0,
               "av1_mode": 0,
               "capture": "",
+              "screencast_persist": "disabled",
               "encoder": "",
             },
           },
@@ -446,6 +448,8 @@
           delete this.config.platform;
           delete this.config.status;
           delete this.config.version;
+          // Runtime-only: reported by GET /api/config when Sunshine was started with -0
+          delete this.config.pin_stdin;
 
           // TODO: let each tab's Component handle it's own data instead of doing it here
 
@@ -500,6 +504,12 @@
         // create a temp copy of this.config to use for the post request
         let config = this.serialize();
 
+        // Never persist runtime-only fields returned by GET /api/config
+        delete config.platform;
+        delete config.status;
+        delete config.version;
+        delete config.pin_stdin;
+
         // delete default values from this.config
         this.tabs.forEach(tab => {
           Object.keys(tab.options).forEach(optionKey => {
@@ -522,14 +532,23 @@
             'Content-Type': 'application/json'
           },
           body: JSON.stringify(config),
-        }).then((r) => {
+        }).then(async (r) => {
           if (r.status === 200) {
             this.saved = true
             return this.saved
           }
-          else {
-            return false
+
+          let message = 'Failed to save configuration';
+          try {
+            const body = await r.json();
+            if (body && body.error) {
+              message = body.error;
+            }
+          } catch (e) {
+            console.debug('save: response body is not JSON', e);
           }
+          notify.error(message, this.$t('_common.save'));
+          return false
         });
       },
       apply() {
