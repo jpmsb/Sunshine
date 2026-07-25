@@ -133,6 +133,102 @@ excluded_paths=()
 default_tar_excludes excluded_paths
 read_copr_ci_excludes excluded_paths
 
+# Ensure NVENC headers exist when the full build-deps submodule is skipped.
+# After LizardByte/Sunshine#5449, cmake includes:
+#   third-party/build-deps/third-party/FFmpeg/nv-codec-headers/include
+# Packaging excludes build-deps to keep tarballs small; without these headers the
+# compiler silently picks older CUDA toolkit ffnvcodec headers and nvenc_base.cpp
+# fails the NVENCAPI_VERSION == 13.0 guard.
+function ensure_nv_codec_headers() {
+  local dest="${source_root}/third-party/build-deps/third-party/FFmpeg/nv-codec-headers"
+  local hdr="${dest}/include/ffnvcodec/nvEncodeAPI.h"
+  if [[ -f "${hdr}" ]]; then
+    echo "nv-codec-headers already present at ${dest}"
+    return 0
+  fi
+
+  echo "nv-codec-headers missing (build-deps skipped); cloning FFmpeg sdk/13.0..."
+  mkdir -p "$(dirname "${dest}")"
+  if [[ -e "${dest}" ]]; then
+    rm -rf "${dest}"
+  fi
+  git clone --depth 1 --branch sdk/13.0 \
+    https://github.com/FFmpeg/nv-codec-headers.git "${dest}"
+  # Drop VCS metadata from the injected clone (not needed in the RPM tarball).
+  rm -rf "${dest}/.git"
+  if [[ ! -f "${hdr}" ]]; then
+    echo "ERROR: failed to populate nv-codec-headers at ${hdr}" >&2
+    exit 1
+  fi
+}
+
+# .copr-ci excludes the whole build-deps tree. Replace that blanket exclude with
+# selective excludes so only nv-codec-headers (required by cmake) ships in the
+# tarball — even when a full local build-deps checkout is present (~1GB+).
+function refine_build_deps_excludes() {
+  local -n _out=$1
+  local filtered=()
+  local path
+  local has_build_deps_exclude=0
+  for path in "${_out[@]}"; do
+    if [[ "${path}" == "third-party/build-deps" ]]; then
+      has_build_deps_exclude=1
+      continue
+    fi
+    filtered+=("${path}")
+  done
+  _out=("${filtered[@]}")
+
+  if [[ "${has_build_deps_exclude}" -eq 0 ]]; then
+    return 0
+  fi
+
+  local bd="${source_root}/third-party/build-deps"
+  if [[ ! -d "${bd}" ]]; then
+    return 0
+  fi
+
+  echo "Refining third-party/build-deps excludes (keep nv-codec-headers only)"
+  _out+=("third-party/build-deps/.git")
+
+  local item base
+  for item in "${bd}"/*; do
+    [[ -e "${item}" ]] || continue
+    base="$(basename "${item}")"
+    if [[ "${base}" != "third-party" ]]; then
+      _out+=("third-party/build-deps/${base}")
+      echo "  Excluding: third-party/build-deps/${base}"
+    fi
+  done
+
+  if [[ -d "${bd}/third-party" ]]; then
+    for item in "${bd}/third-party"/*; do
+      [[ -e "${item}" ]] || continue
+      base="$(basename "${item}")"
+      if [[ "${base}" != "FFmpeg" ]]; then
+        _out+=("third-party/build-deps/third-party/${base}")
+        echo "  Excluding: third-party/build-deps/third-party/${base}"
+      fi
+    done
+  fi
+
+  if [[ -d "${bd}/third-party/FFmpeg" ]]; then
+    for item in "${bd}/third-party/FFmpeg"/*; do
+      [[ -e "${item}" ]] || continue
+      base="$(basename "${item}")"
+      if [[ "${base}" != "nv-codec-headers" ]]; then
+        _out+=("third-party/build-deps/third-party/FFmpeg/${base}")
+        echo "  Excluding: third-party/build-deps/third-party/FFmpeg/${base}"
+      fi
+    done
+  fi
+
+  _out+=("third-party/build-deps/third-party/FFmpeg/nv-codec-headers/.git")
+}
+
+ensure_nv_codec_headers
+refine_build_deps_excludes excluded_paths
+
 mkdir -p \
   "${output_dir}/BUILD" \
   "${output_dir}/BUILDROOT" \
