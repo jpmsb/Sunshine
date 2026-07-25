@@ -46,6 +46,24 @@ TEST(ConfighttpValidationTest, ValidateConfigPatchAcceptsKnownKey) {
   ASSERT_FALSE(confighttp_validation::validate_config_patch(patch).has_value());
 }
 
+TEST(ConfighttpValidationTest, ValidateConfigPatchAcceptsScreencastCapture) {
+  const nlohmann::json patch = {
+    {"capture", "screencast"},
+    {"screencast_persist", "enabled"},
+  };
+
+  ASSERT_FALSE(confighttp_validation::validate_config_patch(patch).has_value());
+}
+
+TEST(ConfighttpValidationTest, ValidateConfigPatchRejectsRuntimePinStdinKey) {
+  const nlohmann::json patch = {
+    {"pin_stdin", true},
+    {"capture", "screencast"},
+  };
+
+  ASSERT_TRUE(confighttp_validation::validate_config_patch(patch).has_value());
+}
+
 TEST(ConfighttpValidationTest, ValidateAppJsonRejectsUnknownField) {
   const nlohmann::json app = {
     {"name", "Test"},
