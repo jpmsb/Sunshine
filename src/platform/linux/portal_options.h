@@ -6,10 +6,107 @@
 
 // standard includes
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
 namespace portal {
+
+  /**
+   * @brief RGBA color used by the screencast waiting placeholder.
+   */
+  struct rgba_t {
+    std::uint8_t r = 0;  ///< Red channel.
+    std::uint8_t g = 0;  ///< Green channel.
+    std::uint8_t b = 0;  ///< Blue channel.
+    std::uint8_t a = 255;  ///< Alpha channel.
+  };
+
+  /**
+   * @brief Parse a `#RRGGBB` or `#RRGGBBAA` color string.
+   *
+   * @param hex Color string from configuration.
+   * @return Parsed color, or nullopt when the string is invalid.
+   */
+  inline std::optional<rgba_t> parse_placeholder_color(std::string_view hex) {
+    if (hex.empty() || hex.front() != '#') {
+      return std::nullopt;
+    }
+    hex.remove_prefix(1);
+    auto nibble = [](char c) -> int {
+      if (c >= '0' && c <= '9') {
+        return c - '0';
+      }
+      if (c >= 'a' && c <= 'f') {
+        return 10 + (c - 'a');
+      }
+      if (c >= 'A' && c <= 'F') {
+        return 10 + (c - 'A');
+      }
+      return -1;
+    };
+    auto channel = [&](std::size_t i) -> int {
+      const int hi = nibble(hex[i]);
+      const int lo = nibble(hex[i + 1]);
+      if (hi < 0 || lo < 0) {
+        return -1;
+      }
+      return (hi << 4) | lo;
+    };
+
+    if (hex.size() != 6 && hex.size() != 8) {
+      return std::nullopt;
+    }
+    const int r = channel(0);
+    const int g = channel(2);
+    const int b = channel(4);
+    if (r < 0 || g < 0 || b < 0) {
+      return std::nullopt;
+    }
+    rgba_t color {
+      static_cast<std::uint8_t>(r),
+      static_cast<std::uint8_t>(g),
+      static_cast<std::uint8_t>(b),
+      255,
+    };
+    if (hex.size() == 8) {
+      const int a = channel(6);
+      if (a < 0) {
+        return std::nullopt;
+      }
+      color.a = static_cast<std::uint8_t>(a);
+    }
+    return color;
+  }
+
+  /**
+   * @brief Resolve placeholder color, falling back to opaque black on invalid input.
+   *
+   * @param hex Color string from configuration.
+   * @return Parsed or default color.
+   */
+  inline rgba_t placeholder_color_or_default(std::string_view hex) {
+    if (auto parsed = parse_placeholder_color(hex)) {
+      return *parsed;
+    }
+    return {};
+  }
+
+  /**
+   * @brief Resolve placeholder text; empty config uses the hostname.
+   *
+   * @param configured User-configured text (may be empty).
+   * @param hostname Host name used when configured text is empty.
+   * @return Text to render on the placeholder.
+   */
+  inline std::string resolve_placeholder_text(std::string_view configured, std::string_view hostname) {
+    if (!configured.empty()) {
+      return std::string {configured};
+    }
+    return std::string {hostname};
+  }
+
+  constexpr std::string_view SCREENCAST_PLACEHOLDER_NAME = "screencast-placeholder";  ///< Synthetic display while waiting for portal Start.
 
   /**
    * @brief Capture backends that share the xdg-desktop-portal PipeWire path.
