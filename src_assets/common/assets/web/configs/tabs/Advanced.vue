@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import PlatformLayout from '../../PlatformLayout.vue'
 
 const props = defineProps([
@@ -9,6 +9,30 @@ const props = defineProps([
 ])
 
 const config = ref(props.config)
+
+/**
+ * Native color inputs only accept #RRGGBB; strip alpha when present.
+ */
+const placeholderColorForPicker = computed(() => {
+  const value = (config.value.screencast_placeholder_color || '#000000').trim()
+  if (/^#[0-9A-Fa-f]{8}$/.test(value)) {
+    return value.slice(0, 7)
+  }
+  if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
+    return value
+  }
+  return '#000000'
+})
+
+/**
+ * @param {Event} event Color input change event.
+ */
+function onPlaceholderColorPicker(event) {
+  const target = event.target
+  if (target && typeof target.value === 'string') {
+    config.value.screencast_placeholder_color = target.value
+  }
+}
 </script>
 
 <template>
@@ -96,6 +120,39 @@ const config = ref(props.config)
         <option value="enabled">{{ $t('_common.enabled') }}</option>
       </select>
       <div class="form-text">{{ $t('config.screencast_persist_desc') }}</div>
+    </div>
+
+    <!-- Screencast placeholder -->
+    <div class="mb-3" v-if="(platform === 'linux' || platform === 'freebsd') && config.capture === 'screencast'">
+      <label for="screencast_placeholder_color" class="form-label">{{ $t('config.screencast_placeholder_color') }}</label>
+      <div class="d-flex gap-2 align-items-center">
+        <input
+          id="screencast_placeholder_color_picker"
+          type="color"
+          class="form-control form-control-color"
+          :value="placeholderColorForPicker"
+          @input="onPlaceholderColorPicker"
+        >
+        <input
+          id="screencast_placeholder_color"
+          type="text"
+          class="form-control"
+          v-model="config.screencast_placeholder_color"
+          placeholder="#000000"
+        >
+      </div>
+      <div class="form-text">{{ $t('config.screencast_placeholder_color_desc') }}</div>
+    </div>
+    <div class="mb-3" v-if="(platform === 'linux' || platform === 'freebsd') && config.capture === 'screencast'">
+      <label for="screencast_placeholder_text" class="form-label">{{ $t('config.screencast_placeholder_text') }}</label>
+      <input
+        id="screencast_placeholder_text"
+        type="text"
+        class="form-control"
+        v-model="config.screencast_placeholder_text"
+        :placeholder="$t('config.screencast_placeholder_text_placeholder')"
+      >
+      <div class="form-text">{{ $t('config.screencast_placeholder_text_desc') }}</div>
     </div>
 
     <!-- Encoder -->
