@@ -1719,6 +1719,16 @@ namespace video {
               std::this_thread::sleep_for(20ms);
             }
 
+            // PipeWire window resize already updated display width/height and keeps the stream
+            // connected. Recreating the portal consumer races the producer and has segfaulted.
+            if (disp && disp->consume_resolution_reinit()) {
+              BOOST_LOG(info) << "Display resolution changed; keeping capture session and rebuilding encoders"sv;
+              imgs = std::list<std::shared_ptr<platf::img_t>>(capture_buffer_size);
+              display_wp = disp;
+              reinit_event.reset();
+              continue;
+            }
+
             while (capture_ctx_queue->running()) {
               // Release the display before reenumerating displays, since some capture backends
               // only support a single display session per device/application.
@@ -2782,6 +2792,24 @@ namespace video {
       auto status = disp->capture(push_captured_image_callback, pull_free_image_callback, &display_cursor);
       switch (status) {
         case platf::capture_e::reinit:
+          if (disp && disp->consume_resolution_reinit()) {
+            BOOST_LOG(info) << "Display resolution changed; keeping capture session and rebuilding encoders"sv;
+            img = disp->alloc_img();
+            if (!img || disp->dummy_img(img.get())) {
+              return encode_e::error;
+            }
+            synced_sessions.clear();
+            for (auto &ctx : synced_session_ctxs) {
+              auto synced_session = make_synced_session(disp.get(), encoder, *img, *ctx);
+              if (!synced_session) {
+                return encode_e::error;
+              }
+              synced_sessions.emplace_back(std::move(*synced_session));
+            }
+            ec = platf::capture_e::ok;
+            continue;
+          }
+          [[fallthrough]];
         case platf::capture_e::error:
         case platf::capture_e::ok:
         case platf::capture_e::timeout:
@@ -3134,10 +3162,21 @@ namespace video {
 
     // Test HDR and YUV444 support
     {
+      // Portal/ScreenCast capture opens a system picker (or restore session). Recreating the
+      // display for every encode-format probe is unnecessary and has crashed PipeWire teardown
+      // on some hosts. Reuse the existing capture session when only encoder config changes.
+      const bool reuse_portal_display = config::video.capture == "portal" || config::video.capture == "screencast";
+      auto reset_display_for_probe = [&](const config_t &cfg) {
+        if (reuse_portal_display && disp) {
+          return;
+        }
+        reset_display(disp, encoder.platform_formats->dev_type, output_name, cfg);
+      };
+
       auto test_yuv444 = [&](auto &flag_map, auto video_format) {
         const config_t config = {1920, 1080, 60, 6000, 1000, 1, 0, 1, video_format, 0, 1};
 
-        reset_display(disp, encoder.platform_formats->dev_type, output_name, config);
+        reset_display_for_probe(config);
         if (!disp) {
           return;
         }
@@ -3159,7 +3198,7 @@ namespace video {
       auto test_yuv420_hdr = [&](auto &flag_map, auto video_format) {
         const config_t config = {1920, 1080, 60, 6000, 1000, 1, 0, 3, video_format, 1, 0};
 
-        reset_display(disp, encoder.platform_formats->dev_type, output_name, config);
+        reset_display_for_probe(config);
         if (!disp) {
           return;
         }
@@ -3179,7 +3218,7 @@ namespace video {
       auto test_yuv444_hdr = [&](auto &flag_map, auto video_format) {
         const config_t config = {1920, 1080, 60, 6000, 1000, 1, 0, 3, video_format, 1, 1};
 
-        reset_display(disp, encoder.platform_formats->dev_type, output_name, config);
+        reset_display_for_probe(config);
         if (!disp) {
           return;
         }
