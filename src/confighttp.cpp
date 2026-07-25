@@ -1395,6 +1395,14 @@ namespace confighttp {
       std::stringstream config_stream;
       nlohmann::json output_tree;
       nlohmann::json input_tree = nlohmann::json::parse(ss);
+
+      // Strip runtime-only fields that GET /api/config may echo back to the Web UI.
+      // These must never be persisted (e.g. pin_stdin when Sunshine is started with -0).
+      input_tree.erase("pin_stdin");
+      input_tree.erase("status");
+      input_tree.erase("platform");
+      input_tree.erase("version");
+
       if (const auto validation_error = confighttp_validation::validate_config_patch(input_tree)) {
         bad_request(response, request, *validation_error);
         return;
@@ -1409,7 +1417,11 @@ namespace confighttp {
         // we should migrate the config file to straight JSON and get rid of all this nonsense
         config_stream << k << " = " << (v.is_string() ? v.get<std::string>() : v.dump()) << std::endl;
       }
-      file_handler::write_file(config::sunshine.config_file.c_str(), config_stream.str());
+      if (file_handler::write_file(config::sunshine.config_file.c_str(), config_stream.str()) != 0) {
+        BOOST_LOG(error) << "SaveConfig: failed to write config file: "sv << config::sunshine.config_file;
+        bad_request(response, request, "Failed to write config file");
+        return;
+      }
       output_tree["status"] = true;
       send_response(response, output_tree);
     } catch (std::exception &e) {
