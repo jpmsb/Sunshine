@@ -8,11 +8,14 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 
 // local includes
 #include "config.h"
 #include "pipewire.cpp"
 #include "portal_options.h"
+#include "screencast_placeholder.cpp"
+#include "src/globals.h"
 
 namespace {
   // Portal configuration constants
@@ -69,6 +72,8 @@ namespace {
   // One-shot: next dbus_t::init skips restore tokens so the system picker opens again.
   // Also suppresses keepalive in ~portal_t while the old grant is being discarded.
   std::atomic_bool screencast_force_fresh_start {false};
+  // Suppress keepalive when swapping to a newly committed portal session (mid-stream reselect).
+  std::atomic_bool screencast_suppress_keepalive {false};
 }  // namespace
 
 using namespace std::literals;
@@ -870,6 +875,13 @@ namespace portal {
    */
   std::mutex screencast_live_mutex;
   std::shared_ptr<dbus_t> screencast_live_dbus;
+  std::shared_ptr<dbus_t> screencast_pending_shadow;  ///< Shadow session awaiting capture-thread commit.
+  std::shared_ptr<dbus_t> screencast_old_session_to_close;  ///< Previous live session closed after swap.
+
+  std::mutex screencast_picker_mutex;  ///< Serialize bootstrap and shadow pickers.
+  std::atomic_bool screencast_bootstrap_stop {false};
+  std::thread screencast_bootstrap_thread;
+  std::atomic_bool screencast_reselect_running {false};
 
   /**
    * @brief Idle PipeWire consumer that keeps the portal node alive between clients.
@@ -887,6 +899,35 @@ namespace portal {
   };
 
   screencast_keepalive_t screencast_keepalive;
+
+  /**
+   * @brief Raise mail::screencast_ready when the mail bus is available.
+   */
+  void raise_screencast_ready() {
+    if (mail::man) {
+      mail::man->event<bool>(mail::screencast_ready)->raise(true);
+    }
+  }
+
+  /**
+   * @brief Whether a shadow screencast session is waiting to be committed.
+   *
+   * @return True when begin_screencast_source_reselect() succeeded and apply is pending.
+   */
+  bool has_pending_screencast_swap() {
+    std::scoped_lock lock(screencast_live_mutex);
+    return static_cast<bool>(screencast_pending_shadow);
+  }
+
+  /**
+   * @brief Whether a live screencast portal session is ready for PipeWire capture.
+   *
+   * @return True when the process-wide live session has streams.
+   */
+  bool has_screencast_live_session() {
+    std::scoped_lock lock(screencast_live_mutex);
+    return screencast_live_dbus && !screencast_live_dbus->is_session_closed() && screencast_live_dbus->ready();
+  }
 
   /**
    * @brief Stop the process-wide screencast PipeWire keepalive consumer.
@@ -1056,33 +1097,164 @@ namespace portal {
   /**
    * @brief Tear down the live screencast grant so the next capture opens a fresh picker.
    *
-   * Only marks force-fresh and detaches the live cache. The PipeWire keepalive must remain
-   * until the active display consumer is destroyed — tearing the keepalive down first while
-   * the streaming consumer is still alive SIGSEGVs in PipeWire 1.6 (wrong-context destroy).
+   * Used when no client is streaming. With active clients, prefer begin_screencast_source_reselect().
    */
   void request_screencast_source_reselect() {
     BOOST_LOG(info) << "[portalgrab] Requesting screencast source reselect (fresh portal picker)"sv;
     screencast_force_fresh_start.store(true);
     clear_screencast_runtime_token();
-    // Detach the process-wide cache without destroying keepalive or closing the session yet.
-    // portal_t (active display) and keepalive still hold shared_ptrs to the same dbus_t.
     {
       std::scoped_lock lock(screencast_live_mutex);
       if (screencast_live_dbus) {
         BOOST_LOG(info) << "[portalgrab] Detaching live screencast cache for source reselect"sv;
         screencast_live_dbus.reset();
       }
+      screencast_pending_shadow.reset();
+      screencast_old_session_to_close.reset();
     }
   }
 
   /**
    * @brief Drop keepalive after the active streaming consumer has been destroyed.
    *
-   * Call only after `disp.reset()` during a mid-stream source reselect.
+   * Call only after `disp.reset()` when clearing an idle grant (no clients).
    */
   void finish_screencast_source_reselect() {
     BOOST_LOG(info) << "[portalgrab] Finishing screencast source reselect; stopping keepalive"sv;
     stop_screencast_keepalive();
+  }
+
+  /**
+   * @brief Run portal CreateSession/SelectSources/Start for screencast (blocking).
+   *
+   * @param force_fresh When true, ignore restore tokens and open the system picker.
+   * @return Ready D-Bus session, or nullptr on cancel/failure.
+   */
+  std::shared_ptr<dbus_t> run_screencast_portal_picker(bool force_fresh) {
+    std::scoped_lock picker_lock(screencast_picker_mutex);
+    if (force_fresh) {
+      screencast_force_fresh_start.store(true);
+      clear_screencast_runtime_token();
+    }
+    auto options = session_options_t::for_mode(capture_mode_e::screencast, config::video.screencast_persist);
+    auto dbus = std::make_shared<dbus_t>(std::move(options));
+    if (dbus->init() < 0) {
+      BOOST_LOG(warning) << "[portalgrab] Screencast picker: D-Bus init failed"sv;
+      return nullptr;
+    }
+    if (dbus->connect_to_portal() < 0) {
+      BOOST_LOG(warning) << "[portalgrab] Screencast picker cancelled or failed"sv;
+      return nullptr;
+    }
+    if (!dbus->ready()) {
+      return nullptr;
+    }
+    return dbus;
+  }
+
+  /**
+   * @brief Start the boot-time ScreenCast picker on a background thread.
+   */
+  void screencast_bootstrap_start() {
+    screencast_bootstrap_stop.store(false);
+    if (screencast_bootstrap_thread.joinable()) {
+      return;
+    }
+    screencast_bootstrap_thread = std::thread([]() {
+      BOOST_LOG(info) << "[portalgrab] Starting screencast bootstrap picker"sv;
+      if (screencast_bootstrap_stop.load()) {
+        return;
+      }
+      // Reuse an existing live session (e.g. persist restore already done).
+      if (has_screencast_live_session()) {
+        BOOST_LOG(info) << "[portalgrab] Screencast live session already present; skipping bootstrap picker"sv;
+        raise_screencast_ready();
+        return;
+      }
+      auto dbus = run_screencast_portal_picker(false);
+      if (screencast_bootstrap_stop.load() || !dbus) {
+        return;
+      }
+      publish_screencast_live_session(dbus);
+      BOOST_LOG(info) << "[portalgrab] Screencast bootstrap picker completed"sv;
+      raise_screencast_ready();
+    });
+  }
+
+  /**
+   * @brief Stop the bootstrap thread during platform teardown.
+   */
+  void screencast_bootstrap_stop_join() {
+    screencast_bootstrap_stop.store(true);
+    if (screencast_bootstrap_thread.joinable()) {
+      screencast_bootstrap_thread.join();
+    }
+  }
+
+  /**
+   * @brief Open a shadow portal picker without tearing down the active capture session.
+   */
+  void begin_screencast_source_reselect() {
+    bool expected = false;
+    if (!screencast_reselect_running.compare_exchange_strong(expected, true)) {
+      BOOST_LOG(info) << "[portalgrab] Screencast reselect already in progress"sv;
+      return;
+    }
+    std::thread([]() {
+      BOOST_LOG(info) << "[portalgrab] Starting shadow screencast source reselect"sv;
+      auto dbus = run_screencast_portal_picker(true);
+      if (!dbus) {
+        screencast_reselect_running.store(false);
+        return;
+      }
+      {
+        std::scoped_lock lock(screencast_live_mutex);
+        screencast_pending_shadow = std::move(dbus);
+      }
+      BOOST_LOG(info) << "[portalgrab] Shadow screencast session ready; signaling capture swap"sv;
+      raise_screencast_ready();
+      screencast_reselect_running.store(false);
+    }).detach();
+  }
+
+  /**
+   * @brief Commit a pending shadow session (or no-op when bootstrap already published live).
+   *
+   * Call from the capture thread before destroying the current display during a screencast_ready reinit.
+   *
+   * @return True when an old session must be closed after `disp.reset()` via finish_screencast_session_swap().
+   */
+  bool apply_screencast_ready() {
+    std::shared_ptr<dbus_t> pending;
+    {
+      std::scoped_lock lock(screencast_live_mutex);
+      pending = std::move(screencast_pending_shadow);
+      if (!pending) {
+        return false;
+      }
+      screencast_old_session_to_close = std::move(screencast_live_dbus);
+      screencast_live_dbus = std::move(pending);
+    }
+    // Prevent ~portal_t from attaching keepalive to the session being discarded.
+    // Keepalive teardown waits until after disp.reset() in finish_screencast_session_swap().
+    screencast_suppress_keepalive.store(true);
+    BOOST_LOG(info) << "[portalgrab] Applied pending screencast session for capture swap"sv;
+    return true;
+  }
+
+  /**
+   * @brief Finish a mid-stream session swap after the old display consumer was destroyed.
+   */
+  void finish_screencast_session_swap() {
+    stop_screencast_keepalive();
+    std::shared_ptr<dbus_t> dropping;
+    {
+      std::scoped_lock lock(screencast_live_mutex);
+      dropping = std::move(screencast_old_session_to_close);
+    }
+    dropping.reset();
+    screencast_suppress_keepalive.store(false);
+    screencast_force_fresh_start.store(false);
   }
 
   /**
@@ -1118,8 +1290,8 @@ namespace portal {
       // Keep the portal PipeWire node alive across client disconnects / display rebuilds.
       // Attach keepalive before destroying this display's consumer so the node never hits
       // zero consumers (KDE would tear it down and the next connect would SIGSEGV).
-      // Skip while a source reselect is pending — the old grant is being discarded.
-      if (!screencast_force_fresh_start.load() && dbus && dbus->mode() == capture_mode_e::screencast && dbus->ready() && !dbus->pipewire_streams.empty()) {
+      // Skip while a source reselect/swap is pending — the old grant is being discarded.
+      if (!screencast_force_fresh_start.load() && !screencast_suppress_keepalive.load() && dbus && dbus->mode() == capture_mode_e::screencast && dbus->ready() && !dbus->pipewire_streams.empty()) {
         const auto &stream = dbus->pipewire_streams.front();
         ensure_screencast_keepalive(dbus, stream.pipewire_node, width > 0 ? width : stream.width, height > 0 ? height : stream.height);
       }
@@ -1316,13 +1488,6 @@ namespace portal {
    */
   std::vector<std::string> portal_display_names_for_mode(capture_mode_e mode) {
     std::vector<std::string> display_names;
-    auto options = session_options_t::for_mode(mode, config::video.screencast_persist);
-    auto dbus = acquire_portal_dbus(std::move(options));
-
-    if (dbus->init() < 0) {
-      BOOST_LOG(warning) << "[portalgrab] Failed to connect to dbus. Cannot enumerate displays, returning empty list.";
-      return {};
-    }
 
     if (platf::has_elevated_privileges(true)) {
       // We're still in the probing phase of Sunshine startup. Dropping portal security early will break KMS.
@@ -1331,13 +1496,40 @@ namespace portal {
       return display_names;
     }
 
+    // Screencast: never block the capture/enumerate path on the system picker. Bootstrap owns that.
+    if (mode == capture_mode_e::screencast) {
+      std::shared_ptr<dbus_t> live;
+      {
+        std::scoped_lock lock(screencast_live_mutex);
+        live = screencast_live_dbus;
+      }
+      if (live && !live->is_session_closed() && live->ready()) {
+        for (auto stream_ : live->pipewire_streams) {
+          BOOST_LOG(info) << "[portalgrab] Found stream for display id/name: '"sv << stream_.monitor_name << "' position: "sv << stream_.pos_x << "x"sv << stream_.pos_y << " resolution: "sv << stream_.width << "x"sv << stream_.height;
+          display_names.emplace_back(stream_.to_display_name());
+        }
+        if (!display_names.empty()) {
+          return display_names;
+        }
+      }
+      display_names.emplace_back(std::string {SCREENCAST_PLACEHOLDER_NAME});
+      return display_names;
+    }
+
+    auto options = session_options_t::for_mode(mode, config::video.screencast_persist);
+    auto dbus = acquire_portal_dbus(std::move(options));
+
+    if (dbus->init() < 0) {
+      BOOST_LOG(warning) << "[portalgrab] Failed to connect to dbus. Cannot enumerate displays, returning empty list.";
+      return {};
+    }
+
     if (dbus->connect_to_portal() < 0) {
       BOOST_LOG(warning) << "[portalgrab] Failed to connect to portal. Cannot enumerate displays, returning empty list.";
       return {};
     }
 
     publish_screencast_live_session(dbus);
-
 
     for (auto stream_ : dbus->pipewire_streams) {
       BOOST_LOG(info) << "[portalgrab] Found stream for display id/name: '"sv << stream_.monitor_name << "' position: "sv << stream_.pos_x << "x"sv << stream_.pos_y << " resolution: "sv << stream_.width << "x"sv << stream_.height;
@@ -1372,6 +1564,10 @@ namespace platf {
    * @return Display backend backed by xdg-desktop-portal ScreenCast UI and PipeWire, or nullptr.
    */
   std::shared_ptr<display_t> screencast_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
+    if (!portal::has_screencast_live_session()) {
+      BOOST_LOG(info) << "[portalgrab] Using screencast placeholder display"sv;
+      return portal::make_screencast_placeholder_display(hwdevice_type, config);
+    }
     return portal::make_portal_display(portal::capture_mode_e::screencast, hwdevice_type, display_name, config);
   }
 
