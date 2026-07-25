@@ -73,3 +73,45 @@ TEST(PortalOptionsTest, SessionOptionsForScreencastWithPersist) {
 TEST(PortalOptionsTest, ScreencastPersistConfigDefaultIsFalse) {
   EXPECT_FALSE(config::video.screencast_persist);
 }
+
+TEST(PortalOptionsTest, ParsePlaceholderColorRgb) {
+  const auto color = portal::parse_placeholder_color("#112233");
+  ASSERT_TRUE(color.has_value());
+  EXPECT_EQ(0x11, color->r);
+  EXPECT_EQ(0x22, color->g);
+  EXPECT_EQ(0x33, color->b);
+  EXPECT_EQ(255, color->a);
+}
+
+TEST(PortalOptionsTest, ParsePlaceholderColorRgba) {
+  const auto color = portal::parse_placeholder_color("#aabbccdd");
+  ASSERT_TRUE(color.has_value());
+  EXPECT_EQ(0xaa, color->r);
+  EXPECT_EQ(0xbb, color->g);
+  EXPECT_EQ(0xcc, color->b);
+  EXPECT_EQ(0xdd, color->a);
+}
+
+TEST(PortalOptionsTest, ParsePlaceholderColorInvalidFallsBackToBlack) {
+  EXPECT_FALSE(portal::parse_placeholder_color("112233").has_value());
+  EXPECT_FALSE(portal::parse_placeholder_color("#xyz").has_value());
+  const auto color = portal::placeholder_color_or_default("not-a-color");
+  EXPECT_EQ(0, color.r);
+  EXPECT_EQ(0, color.g);
+  EXPECT_EQ(0, color.b);
+  EXPECT_EQ(255, color.a);
+}
+
+TEST(PortalOptionsTest, ResolvePlaceholderTextUsesHostnameWhenEmpty) {
+  EXPECT_EQ("my-host", portal::resolve_placeholder_text("", "my-host"));
+  EXPECT_EQ("Hello", portal::resolve_placeholder_text("Hello", "my-host"));
+}
+
+TEST(PortalOptionsTest, ScreencastPlaceholderNameIsStable) {
+  EXPECT_EQ("screencast-placeholder", portal::SCREENCAST_PLACEHOLDER_NAME);
+}
+
+TEST(PortalOptionsTest, PlaceholderConfigDefaults) {
+  EXPECT_EQ("#000000", config::video.screencast_placeholder_color);
+  EXPECT_TRUE(config::video.screencast_placeholder_text.empty());
+}
