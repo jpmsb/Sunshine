@@ -771,6 +771,7 @@ namespace config {
     },
 
     {},  // capture
+    false,  // screencast_persist
     {},  // encoder
     {},  // adapter_name
     {},  // output_name
@@ -1661,6 +1662,7 @@ namespace config {
     int_f(vars, "vk_rc_mode", video.vk.rc_mode);
 
     string_f(vars, "capture", video.capture);
+    bool_f(vars, "screencast_persist", video.screencast_persist);
     string_f(vars, "encoder", video.encoder);
     string_f(vars, "adapter_name", video.adapter_name);
     string_f(vars, "output_name", video.output_name);
