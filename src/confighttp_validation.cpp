@@ -234,6 +234,8 @@ namespace confighttp_validation {
       "av1_mode",
       "capture",
       "screencast_persist",
+      "screencast_placeholder_color",
+      "screencast_placeholder_text",
       "encoder",
       "nvenc_preset",
       "nvenc_twopass",
