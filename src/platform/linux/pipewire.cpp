@@ -151,17 +151,28 @@ namespace pipewire {
     }
 
     /**
+     * @brief How to tear down the PipeWire stream during destroy().
+     */
+    enum class destroy_stream_e {
+      destroy,  ///< Call pw_stream_destroy under the thread-loop lock (normal path).
+      via_core,  ///< Skip pw_stream_destroy; let pw_core_disconnect release the stream.
+    };
+
+    /**
      * @brief Release PipeWire resources. Safe to call more than once.
      *
      * Subclasses that own a portal/KWin session must call this before closing
      * that session: base-class members are destroyed after derived members, so
      * an implicit destructor order would disconnect the stream on a dead remote.
+     *
+     * @param stream_mode Whether to call pw_stream_destroy or rely on core disconnect.
+     *                    Use via_core for screencast keepalive after a sibling portal
+     *                    consumer was torn down — pw_stream_destroy SIGSEGVs there.
      */
-    void destroy() {
+    void destroy(destroy_stream_e stream_mode = destroy_stream_e::destroy) {
       if (!loop) {
         return;
       }
-
 
       BOOST_LOG(info) << "[pipewire] Destroying pipewire_t"sv;
       pw_thread_loop_lock(loop);
@@ -183,10 +194,15 @@ namespace pipewire {
       // Release pipewire stream. Use destroy only — pw_stream_destroy already disconnects,
       // and an extra pw_stream_disconnect() has segfaulted on PipeWire 1.6.x with portal FDs
       // when the stream is still active during encoder-probe display resets.
+      // Keepalive teardown after a sibling portal consumer used via_core: explicit
+      // pw_stream_destroy there reports wrong-context and SIGSEGVs on PipeWire 1.6.x.
       if (stream_data.stream) {
-        BOOST_LOG(debug) << "[pipewire] Deactivate and destroy stream"sv;
-        pw_stream_set_active(stream_data.stream, false);
-        pw_stream_destroy(stream_data.stream);
+        if (stream_mode == destroy_stream_e::destroy) {
+          BOOST_LOG(debug) << "[pipewire] Destroy stream"sv;
+          pw_stream_destroy(stream_data.stream);
+        } else {
+          BOOST_LOG(debug) << "[pipewire] Skip stream destroy; core disconnect will release it"sv;
+        }
         stream_data.stream = nullptr;
       }
       // Release pipewire core
