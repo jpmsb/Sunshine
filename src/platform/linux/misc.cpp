@@ -106,6 +106,16 @@ namespace portal {
    * @brief Release the process-wide screencast portal session before logging teardown.
    */
   void release_screencast_live_session();
+
+  /**
+   * @brief Drop the live screencast session so the next capture opens a fresh picker.
+   */
+  void request_screencast_source_reselect();
+
+  /**
+   * @brief Stop screencast keepalive after the active display consumer was destroyed.
+   */
+  void finish_screencast_source_reselect();
 }  // namespace portal
 #endif
 
@@ -1345,6 +1355,28 @@ namespace platf {
 #endif
 
     return nullptr;
+  }
+
+  /**
+   * @brief Drop the live screencast portal session so the next capture opens a fresh picker.
+   */
+  void request_screencast_source_reselect() {
+#ifdef SUNSHINE_BUILD_PORTAL
+    if (config::video.capture == "screencast") {
+      ::portal::request_screencast_source_reselect();
+    }
+#endif
+  }
+
+  /**
+   * @brief Stop screencast keepalive after the active display consumer was destroyed.
+   */
+  void finish_screencast_source_reselect() {
+#ifdef SUNSHINE_BUILD_PORTAL
+    if (config::video.capture == "screencast") {
+      ::portal::finish_screencast_source_reselect();
+    }
+#endif
   }
 
   /**
