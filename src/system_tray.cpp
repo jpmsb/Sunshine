@@ -38,6 +38,7 @@
   #include "assets_path.h"
   #include "config.h"
   #include "display_device.h"
+  #include "globals.h"
   #include "localization.h"
   #include "logging.h"
   #include "platform/common.h"
@@ -113,6 +114,26 @@ namespace system_tray {
     BOOST_LOG(info) << "Resetting display device config from system tray"sv;
 
     std::ignore = display_device::reset_persistence();
+  }
+
+  void tray_change_screencast_source_cb([[maybe_unused]] struct tray_menu *item) {
+    if (config::video.capture != "screencast") {
+      BOOST_LOG(warning) << "Change Capture Source ignored: capture is not screencast"sv;
+      return;
+    }
+
+    // With no active stream the capture thread is not running — drop the live grant
+    // so the next client connect opens a fresh picker once. No active consumer, so
+    // finish() can stop keepalive immediately after request().
+    if (rtsp_stream::list_active_sessions().empty()) {
+      BOOST_LOG(info) << "No active clients; clearing screencast session for next connect"sv;
+      platf::request_screencast_source_reselect();
+      platf::finish_screencast_source_reselect();
+      return;
+    }
+
+    BOOST_LOG(info) << "Requesting screencast source reselect from system tray"sv;
+    mail::man->event<bool>(mail::reselect_screencast)->raise(true);
   }
 
   void tray_restart_cb([[maybe_unused]] struct tray_menu *item) {
@@ -447,6 +468,11 @@ namespace system_tray {
     tray_root_menu.push_back({.text = "-"});
     tray_root_menu.push_back({.text = "Donate", .submenu = tray_donate_submenu});
     tray_root_menu.push_back({.text = "-"});
+  #ifdef SUNSHINE_BUILD_PORTAL
+    if (config::video.capture == "screencast") {
+      tray_root_menu.push_back({.text = "Change Capture Source...", .cb = tray_change_screencast_source_cb});
+    }
+  #endif
   #ifdef _WIN32
     tray_root_menu.push_back({.text = "Reset Display Device Config", .cb = tray_reset_display_device_config_cb});
   #endif
