@@ -100,6 +100,15 @@ using namespace std::literals;
 namespace fs = std::filesystem;
 namespace bp = boost::process::v1;
 
+#ifdef SUNSHINE_BUILD_PORTAL
+namespace portal {
+  /**
+   * @brief Release the process-wide screencast portal session before logging teardown.
+   */
+  void release_screencast_live_session();
+}  // namespace portal
+#endif
+
 window_system_e window_system;  ///< Window system.
 
 namespace dyn {
@@ -1122,6 +1131,7 @@ namespace platf {
 #endif
 #ifdef SUNSHINE_BUILD_PORTAL
       PORTAL,  ///< XDG PORTAL
+      SCREENCAST,  ///< XDG Portal ScreenCast UI (monitors and windows)
 #endif
       MAX_FLAGS  ///< The maximum number of flags
     };
@@ -1186,9 +1196,17 @@ namespace platf {
 #ifdef SUNSHINE_BUILD_PORTAL
   std::vector<std::string> portal_display_names();
   std::shared_ptr<display_t> portal_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config);
+  std::vector<std::string> screencast_display_names();
+  std::shared_ptr<display_t> screencast_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config);
+  bool screencast_available();
 
   bool verify_portal() {
     return !portal_display_names().empty();
+  }
+
+  bool verify_screencast() {
+    // Do not open the system picker during startup probe; defer consent to capture start.
+    return screencast_available();
   }
 #endif
 
@@ -1231,6 +1249,9 @@ namespace platf {
 #ifdef SUNSHINE_BUILD_PORTAL
     if (sources[source::PORTAL]) {
       return portal_display_names();
+    }
+    if (sources[source::SCREENCAST]) {
+      return screencast_display_names();
     }
 #endif
 #ifdef SUNSHINE_BUILD_KWIN
@@ -1305,6 +1326,13 @@ namespace platf {
       }
       BOOST_LOG(warning) << "XDG portal capture failed; trying other backends"sv;
     }
+    if (sources[source::SCREENCAST]) {
+      BOOST_LOG(info) << "Screencasting with XDG portal ScreenCast UI"sv;
+      if (auto screencast_disp = screencast_display(hwdevice_type, display_name, config)) {
+        return screencast_disp;
+      }
+      BOOST_LOG(warning) << "XDG portal ScreenCast capture failed; trying other backends"sv;
+    }
 #endif
 #ifdef SUNSHINE_BUILD_KWIN
     if (sources[source::KWIN]) {
@@ -1318,6 +1346,21 @@ namespace platf {
 
     return nullptr;
   }
+
+  /**
+   * @brief Linux platform RAII cleanup run before Boost.Log is destroyed.
+   */
+  class platform_deinit_t: public deinit_t {
+  public:
+    /**
+     * @brief Release capture resources that outlive normal streaming teardown.
+     */
+    ~platform_deinit_t() override {
+#ifdef SUNSHINE_BUILD_PORTAL
+      ::portal::release_screencast_live_session();
+#endif
+    }
+  };
 
   /**
    * @brief Initialize the Linux high-precision timer file descriptor.
@@ -1375,6 +1418,10 @@ namespace platf {
     if ((config::video.capture.empty() || config::video.capture == "portal") && verify_portal()) {
       sources[source::PORTAL] = true;
     }
+    // Screencast is opt-in only; never auto-selected when capture is empty.
+    if (config::video.capture == "screencast" && verify_screencast()) {
+      sources[source::SCREENCAST] = true;
+    }
 #endif
 #ifdef SUNSHINE_BUILD_KWIN
     if (((config::video.capture.empty() && sources.none()) || config::video.capture == "kwin") && verify_kwin()) {
@@ -1392,7 +1439,7 @@ namespace platf {
       return nullptr;
     }
 
-    return std::make_unique<deinit_t>();
+    return std::make_unique<platform_deinit_t>();
   }
 
   /**
