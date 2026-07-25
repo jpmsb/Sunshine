@@ -2235,6 +2235,9 @@ min_log_level = 2
         <td>screencast</td>
         <td>Capture via xdg-desktop-portal ScreenCast UI over PipeWire (monitors and windows), similar to browser/Discord screen share.
             Pair with `screencast_persist` to optionally remember the selection.
+            On startup Sunshine opens the system picker in the background; until a source is chosen, clients receive the
+            configurable placeholder (`screencast_placeholder_color` / `screencast_placeholder_text`).
+            Tray “Change Capture Source” keeps the current stream until the new source is confirmed.
             @note{Applies to FreeBSD and Linux only.}
             @attention{When capturing a window, remote input still targets the desktop session and may not align with the window.}</td>
     </tr>
@@ -2276,6 +2279,53 @@ min_log_level = 2
         <td>Example</td>
         <td colspan="2">@code{}
             screencast_persist = enabled
+            @endcode</td>
+    </tr>
+</table>
+
+### screencast_placeholder_color
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Background color for the ScreenCast waiting placeholder shown when a client connects before a portal
+            source is selected (and while the boot-time picker is still open). Accepts `#RRGGBB` or `#RRGGBBAA`.
+            Invalid values fall back to black.
+            @note{Applies when `capture = screencast` on FreeBSD and Linux only.}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">`#000000`</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            screencast_placeholder_color = #102030
+            @endcode</td>
+    </tr>
+</table>
+
+### screencast_placeholder_text
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Centered text drawn on the ScreenCast waiting placeholder. Leave empty to show the host name.
+            Changing the ScreenCast source from the tray keeps the current stream until the new source is confirmed.
+            @note{Applies when `capture = screencast` on FreeBSD and Linux only.}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">Empty (host name)</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            screencast_placeholder_text = Select a screen
             @endcode</td>
     </tr>
 </table>
