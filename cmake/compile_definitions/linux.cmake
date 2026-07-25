@@ -270,6 +270,7 @@ if(PIPEWIRE_FOUND AND GIO_FOUND AND ${SUNSHINE_ENABLE_PORTAL})
     set(PORTAL_FOUND ON)
     add_compile_definitions(SUNSHINE_BUILD_PORTAL)
     list(APPEND PLATFORM_TARGET_FILES
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/portal_options.h"
             "${CMAKE_SOURCE_DIR}/src/platform/linux/portalgrab.cpp")
 endif()
 
