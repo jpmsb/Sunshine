@@ -2,17 +2,21 @@
  * @file src/platform/linux/portalgrab.cpp
  * @brief Definitions for XDG portal grab.
  */
+// standard includes
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <string_view>
+
 // local includes
+#include "config.h"
 #include "pipewire.cpp"
+#include "portal_options.h"
 
 namespace {
   // Portal configuration constants
-  constexpr uint32_t SOURCE_TYPE_MONITOR = 1;
   constexpr uint32_t CURSOR_MODE_EMBEDDED = 2;
-
-  constexpr uint32_t PERSIST_FORGET = 0;
-  constexpr uint32_t PERSIST_WHILE_RUNNING = 1;
-  constexpr uint32_t PERSIST_UNTIL_REVOKED = 2;
 
   constexpr uint32_t TYPE_KEYBOARD = 1;
   constexpr uint32_t TYPE_POINTER = 2;
@@ -27,26 +31,58 @@ namespace {
 
   constexpr const char REQUEST_PREFIX[] = "/org/freedesktop/portal/desktop/request/";
   constexpr const char SESSION_PREFIX[] = "/org/freedesktop/portal/desktop/session/";
+
+  // In-memory restore token for screencast when disk persistence is disabled.
+  // Allows encoder probe / display resets in the same process to skip the picker when
+  // the portal returns a restore_token.
+  std::mutex screencast_runtime_token_mutex;
+  std::string screencast_runtime_token;
+
+  /**
+   * @brief Read the process-local screencast restore token.
+   *
+   * @return Current in-memory restore token, or empty when unset.
+   */
+  std::string get_screencast_runtime_token() {
+    std::scoped_lock lock(screencast_runtime_token_mutex);
+    return screencast_runtime_token;
+  }
+
+  /**
+   * @brief Store a process-local screencast restore token.
+   *
+   * @param token Restore token returned by xdg-desktop-portal Start.
+   */
+  void set_screencast_runtime_token(std::string_view token) {
+    std::scoped_lock lock(screencast_runtime_token_mutex);
+    screencast_runtime_token = token;
+  }
 }  // namespace
 
 using namespace std::literals;
 
 namespace portal {
-  // Forward declarations
-  class runtime_t;
-
   /**
    * @brief Persistent portal restore token used to reuse screencast permission.
    */
   class restore_token_t {
   public:
     /**
+     * @brief Construct a restore token bound to a basename under appdata.
+     *
+     * @param filename Token basename such as `portal_token` or `screencast_token`.
+     */
+    explicit restore_token_t(std::string filename):
+        filename_(std::move(filename)) {
+    }
+
+    /**
      * @brief Return the currently wrapped value or handle.
      *
      * @return Underlying native handle or object pointer.
      */
-    static std::string get() {
-      return *token_;
+    std::string get() const {
+      return token_;
     }
 
     /**
@@ -54,8 +90,8 @@ namespace portal {
      *
      * @param value Portal restore token received from xdg-desktop-portal.
      */
-    static void set(std::string_view value) {
-      *token_ = value;
+    void set(std::string_view value) {
+      token_ = value;
     }
 
     /**
@@ -63,19 +99,19 @@ namespace portal {
      *
      * @return True when no portal display id has been persisted.
      */
-    static bool empty() {
-      return token_->empty();
+    bool empty() const {
+      return token_.empty();
     }
 
     /**
      * @brief Load persisted state from its backing store.
      */
-    static void load() {
+    void load() {
       std::ifstream file(get_file_path());
       if (file.is_open()) {
-        std::getline(file, *token_);
-        if (!token_->empty()) {
-          BOOST_LOG(info) << "[portalgrab] Loaded portal restore token from disk"sv;
+        std::getline(file, token_);
+        if (!token_.empty()) {
+          BOOST_LOG(info) << "[portalgrab] Loaded portal restore token from disk ("sv << filename_ << ")"sv;
         }
       }
     }
@@ -83,24 +119,25 @@ namespace portal {
     /**
      * @brief Save current state to its backing store.
      */
-    static void save() {
-      if (token_->empty()) {
+    void save() {
+      if (token_.empty()) {
         return;
       }
       std::ofstream file(get_file_path());
       if (file.is_open()) {
-        file << *token_;
-        BOOST_LOG(info) << "[portalgrab] Saved portal restore token to disk"sv;
+        file << token_;
+        BOOST_LOG(info) << "[portalgrab] Saved portal restore token to disk ("sv << filename_ << ")"sv;
       } else {
-        BOOST_LOG(warning) << "[portalgrab] Failed to save portal restore token"sv;
+        BOOST_LOG(warning) << "[portalgrab] Failed to save portal restore token ("sv << filename_ << ")"sv;
       }
     }
 
   private:
-    static inline const std::unique_ptr<std::string> token_ = std::make_unique<std::string>();
+    std::string filename_;  ///< Token basename under the Sunshine appdata directory.
+    std::string token_;  ///< In-memory restore token value.
 
-    static std::string get_file_path() {
-      return platf::appdata().string() + "/portal_token";
+    std::string get_file_path() const {
+      return platf::appdata().string() + "/" + filename_;
     }
   };
 
@@ -134,7 +171,9 @@ namespace portal {
       if (!monitor_name.empty()) {
         return monitor_name;
       }
-      return std::format("position-{}x{}-resolution-{}x{}", pos_x, pos_y, width, height);
+      // Window streams omit a monitor name and may change size while streaming. Encode a
+      // stable id from the PipeWire node so resize does not look like display removal.
+      return std::format("screencast-pw-{}", pipewire_node);
     }
 
     /**
@@ -144,8 +183,17 @@ namespace portal {
      * @return True when the portal display id matches the requested display name.
      */
     bool match_display_name(const std::string_view &display_name) {
-      // Check the given non-empty display name matches the display name for this struct
-      return !display_name.empty() && display_name == to_display_name();
+      if (display_name.empty()) {
+        return false;
+      }
+      if (display_name == to_display_name()) {
+        return true;
+      }
+      // Accept legacy size-encoded names from earlier builds of this capture path.
+      if (monitor_name.empty() && display_name.starts_with("position-")) {
+        return true;
+      }
+      return false;
     }
   };
 
@@ -154,9 +202,22 @@ namespace portal {
    */
   class dbus_t {
   public:
+    /**
+     * @brief Construct a D-Bus portal client with the given session options.
+     *
+     * @param options Capture mode options (source types, persist, token file).
+     */
+    explicit dbus_t(session_options_t options):
+        options_(std::move(options)),
+        restore_token_(options_.token_filename) {
+    }
+
     dbus_t &operator=(dbus_t &&) = delete;  // Do not allow to copying
 
     ~dbus_t() noexcept {
+      // Do not use BOOST_LOG here. This destructor can run during process exit after
+      // Boost.Log TLS has been torn down (e.g. process-wide screencast_live_dbus),
+      // which aborts with "Failed to set TLS value".
       try {
         if (conn && !session_handle.empty()) {
           g_autoptr(GError) err = nullptr;
@@ -174,17 +235,9 @@ namespace portal {
             nullptr,
             &err
           );
-
-          if (err) {
-            BOOST_LOG(warning) << "[portalgrab] Failed to explicitly close portal session: "sv << err->message;
-          } else {
-            BOOST_LOG(debug) << "[portalgrab] Explicitly closed portal session: "sv << session_handle;
-          }
+          (void) err;
         }
-      } catch (const std::exception &e) {
-        BOOST_LOG(error) << "[portalgrab] Standard exception caught in ~dbus_t: "sv << e.what();
       } catch (...) {
-        BOOST_LOG(error) << "[portalgrab] Unknown exception caught in ~dbus_t"sv;
       }
 
       if (pipewire_fd >= 0) {
@@ -207,7 +260,20 @@ namespace portal {
      * @return 0 on success; nonzero or negative platform status on failure.
      */
     int init() {
-      restore_token_t::load();
+      if (conn) {
+        return 0;
+      }
+
+      if (options_.persist_enabled) {
+        restore_token_.load();
+      } else if (options_.token_filename == SCREENCAST_TOKEN_FILENAME) {
+        // Reuse the in-process token so encoder probe can reset the display without
+        // reopening the system picker on every validation pass.
+        if (auto runtime_token = get_screencast_runtime_token(); !runtime_token.empty()) {
+          restore_token_.set(runtime_token);
+          BOOST_LOG(info) << "[portalgrab] Using in-memory screencast restore token"sv;
+        }
+      }
 
       conn = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, nullptr);
       if (!conn) {
@@ -226,18 +292,49 @@ namespace portal {
     }
 
     /**
+     * @brief Whether a portal session with streams is already available.
+     *
+     * @return True when Start has completed and streams were published.
+     */
+    bool ready() const {
+      return !session_handle.empty() && !pipewire_streams.empty();
+    }
+
+    /**
+     * @brief Return the capture mode that created this portal client.
+     *
+     * @return Portal or screencast capture mode.
+     */
+    capture_mode_e mode() const {
+      return options_.mode;
+    }
+
+    /**
      * @brief Connect to xdg-desktop-portal and restore or create a screencast session.
      *
      * @return 0 when a portal session is ready; nonzero when D-Bus or portal setup fails.
      */
     int connect_to_portal() {
+      if (ready()) {
+        BOOST_LOG(info) << "[portalgrab] Reusing portal session streams without reopening the picker"sv;
+        return 0;
+      }
+
       g_autoptr(GMainLoop) loop = g_main_loop_new(nullptr, FALSE);
       g_autofree gchar *session_path = nullptr;
       g_autofree gchar *session_token = nullptr;
       create_session_path(conn, nullptr, &session_token);
 
-      // Try combined RemoteDesktop + ScreenCast session first
-      bool use_screencast_only = !try_remote_desktop_session(loop, &session_path, session_token);
+      // RemoteDesktop sessions cannot use persist_mode on some portals (e.g. KDE:
+      // "Remote desktop sessions cannot persist"). Prefer ScreenCast-only whenever we
+      // need restore tokens or the screencast UI capture mode.
+      const bool screencast_only = prefer_screencast_only_session(options_.mode, options_.persist_enabled, !restore_token_.empty());
+      bool use_screencast_only = screencast_only;
+      if (screencast_only) {
+        BOOST_LOG(info) << "[portalgrab] Using ScreenCast-only portal session"sv;
+      } else {
+        use_screencast_only = !try_remote_desktop_session(loop, &session_path, session_token);
+      }
 
       // Fall back to ScreenCast-only if RemoteDesktop failed
       if (use_screencast_only && try_screencast_only_session(loop, &session_path) < 0) {
@@ -248,11 +345,25 @@ namespace portal {
         return -1;
       }
 
-      if (open_pipewire_remote(session_path, pipewire_fd) < 0) {
+      if (pipewire_streams.empty()) {
+        BOOST_LOG(error) << "[portalgrab] Portal Start returned no usable streams"sv;
         return -1;
       }
 
       return 0;
+    }
+
+    /**
+     * @brief Open a PipeWire remote FD for the active portal session.
+     *
+     * @param fd Set to the newly opened PipeWire FD on success.
+     * @return 0 on success; nonzero when OpenPipeWireRemote fails.
+     */
+    int acquire_pipewire_fd(int &fd) {
+      if (session_handle.empty()) {
+        return -1;
+      }
+      return open_pipewire_remote(session_handle.c_str(), fd);
     }
 
     // Try to create a combined RemoteDesktop + ScreenCast session
@@ -342,13 +453,15 @@ namespace portal {
     }
 
     std::vector<pipewire_streaminfo_t> pipewire_streams;  ///< Pipewire streams.
-    int pipewire_fd;  ///< Pipewire fd.
+    int pipewire_fd {-1};  ///< Pipewire fd.
 
   private:
-    GDBusConnection *conn;
-    GDBusProxy *screencast_proxy;
-    GDBusProxy *remote_desktop_proxy;
-    std::string session_handle;
+    session_options_t options_;  ///< Capture options for this portal session.
+    restore_token_t restore_token_;  ///< Restore token bound to the session token file.
+    GDBusConnection *conn {nullptr};  ///< Session bus connection for portal calls.
+    GDBusProxy *screencast_proxy {nullptr};  ///< Proxy for the ScreenCast portal interface.
+    GDBusProxy *remote_desktop_proxy {nullptr};  ///< Proxy for the RemoteDesktop portal interface.
+    std::string session_handle;  ///< Active portal session object path.
 
     int create_portal_session(GMainLoop *loop, gchar **session_path_out, const gchar *session_token, bool use_screencast) {
       GDBusProxy *proxy = use_screencast ? screencast_proxy : remote_desktop_proxy;
@@ -429,10 +542,8 @@ namespace portal {
       g_variant_builder_open(&builder, G_VARIANT_TYPE("a{sv}"));
       g_variant_builder_add(&builder, "{sv}", "handle_token", g_variant_new_string(request_token));
       g_variant_builder_add(&builder, "{sv}", "types", g_variant_new_uint32(TYPE_KEYBOARD | TYPE_POINTER | TYPE_TOUCHSCREEN));
-      g_variant_builder_add(&builder, "{sv}", "persist_mode", g_variant_new_uint32(PERSIST_UNTIL_REVOKED));
-      if (!restore_token_t::empty()) {
-        g_variant_builder_add(&builder, "{sv}", "restore_token", g_variant_new_string(restore_token_t::get().c_str()));
-      }
+      // Do not send persist_mode on RemoteDesktop: some portals reject it with
+      // "Remote desktop sessions cannot persist" and force a ScreenCast-only fallback.
       g_variant_builder_close(&builder);
 
       g_autoptr(GError) err = nullptr;
@@ -466,7 +577,15 @@ namespace portal {
       return 0;
     }
 
-    int select_screencast_sources(GMainLoop *loop, const gchar *session_path, bool persist) {
+    /**
+     * @brief Request ScreenCast sources for an existing portal session.
+     *
+     * @param loop GLib main loop associated with the portal request.
+     * @param session_path Portal session object path.
+     * @param allow_persist Whether to send persist_mode/restore_token (ScreenCast-only only).
+     * @return 0 on success; nonzero when SelectSources fails.
+     */
+    int select_screencast_sources(GMainLoop *loop, const gchar *session_path, bool allow_persist) {
       dbus_response_t response = {
         nullptr,
       };
@@ -478,13 +597,14 @@ namespace portal {
       g_variant_builder_add(&builder, "o", session_path);
       g_variant_builder_open(&builder, G_VARIANT_TYPE("a{sv}"));
       g_variant_builder_add(&builder, "{sv}", "handle_token", g_variant_new_string(request_token));
-      g_variant_builder_add(&builder, "{sv}", "types", g_variant_new_uint32(SOURCE_TYPE_MONITOR));
+      g_variant_builder_add(&builder, "{sv}", "types", g_variant_new_uint32(options_.source_types));
       g_variant_builder_add(&builder, "{sv}", "cursor_mode", g_variant_new_uint32(CURSOR_MODE_EMBEDDED));
       g_variant_builder_add(&builder, "{sv}", "multiple", g_variant_new_boolean(TRUE));
-      if (persist) {
-        g_variant_builder_add(&builder, "{sv}", "persist_mode", g_variant_new_uint32(PERSIST_UNTIL_REVOKED));
-        if (!restore_token_t::empty()) {
-          g_variant_builder_add(&builder, "{sv}", "restore_token", g_variant_new_string(restore_token_t::get().c_str()));
+      // Persist/restore is only valid on ScreenCast-only sessions on some portals (e.g. KDE).
+      if (allow_persist) {
+        g_variant_builder_add(&builder, "{sv}", "persist_mode", g_variant_new_uint32(persist_mode_for_disk_flag(options_.persist_enabled)));
+        if (!restore_token_.empty()) {
+          g_variant_builder_add(&builder, "{sv}", "restore_token", g_variant_new_string(restore_token_.get().c_str()));
         }
       }
       g_variant_builder_close(&builder);
@@ -560,7 +680,7 @@ namespace portal {
       g_autoptr(GVariant) streams = nullptr;
       g_variant_get(start_response, "(u@a{sv})", &response_code, &dict);
 
-      BOOST_LOG(debug) << "[portalgrab] " << session_type << " Start response_code: "sv << response_code;
+      BOOST_LOG(info) << "[portalgrab] " << session_type << " Start response_code: "sv << response_code;
 
       if (response_code != 0) {
         BOOST_LOG(error) << "[portalgrab] " << session_type << " Start failed with response code: "sv << response_code;
@@ -573,9 +693,18 @@ namespace portal {
         return -1;
       }
 
-      if (const gchar *new_token = nullptr; g_variant_lookup(dict, "restore_token", "s", &new_token) && new_token && new_token[0] != '\0' && restore_token_t::get() != new_token) {
-        restore_token_t::set(new_token);
-        restore_token_t::save();
+      if (const gchar *new_token = nullptr; g_variant_lookup(dict, "restore_token", "s", &new_token) && new_token && new_token[0] != '\0' && restore_token_.get() != new_token) {
+        restore_token_.set(new_token);
+        if (options_.persist_enabled) {
+          restore_token_.save();
+        } else if (options_.token_filename == SCREENCAST_TOKEN_FILENAME) {
+          set_screencast_runtime_token(new_token);
+          BOOST_LOG(info) << "[portalgrab] Cached in-memory screencast restore token"sv;
+        }
+      } else if (options_.mode == capture_mode_e::screencast) {
+        // Host apps without a portal app-id often get no restore_token from KDE.
+        // The live session cache in portal_t covers reuse within this process.
+        BOOST_LOG(info) << "[portalgrab] Start response had no restore_token; relying on live session reuse"sv;
       }
 
       GVariantIter iter;
@@ -584,12 +713,19 @@ namespace portal {
       g_autoptr(GVariant) value = nullptr;
       g_variant_iter_init(&iter, streams);
       while (g_variant_iter_next(&iter, "(u@a{sv})", &out_pipewire_node, &value)) {
-        int out_width;
-        int out_height;
+        int out_width = 0;
+        int out_height = 0;
         bool result = g_variant_lookup(value, "size", "(ii)", &out_width, &out_height, nullptr);
+        uint32_t source_type = 0;
+        g_variant_lookup(value, "source_type", "u", &source_type);
+        // `size` is optional in the ScreenCast.Start API. Window streams (source_type=2)
+        // from some portals (notably KDE) omit it; PipeWire negotiates the real dimensions.
         if (!result) {
-          BOOST_LOG(warning) << "[portalgrab] Ignoring stream without proper resolution on pipewire node "sv << out_pipewire_node;
-          continue;
+          BOOST_LOG(info) << "[portalgrab] Stream on pipewire node "sv << out_pipewire_node
+                          << " has no size property (source_type="sv << source_type
+                          << "); deferring resolution to PipeWire negotiation"sv;
+          out_width = 0;
+          out_height = 0;
         }
 
         int out_pos_x;
@@ -612,11 +748,15 @@ namespace portal {
 
         // Try to match the stream to a monitor_name by position/resolution and update stream info
         for (const auto &monitor : wl_monitors) {
+          if (!monitor) {
+            continue;
+          }
           if (monitor->viewport.offset_x == out_pos_x && monitor->viewport.offset_y == out_pos_y && monitor->viewport.logical_width == out_width && monitor->viewport.logical_height == out_height) {
             stream.monitor_name = monitor->name;
             break;
           }
         }
+
 
         out_pipewire_streams.emplace_back(stream);
       }
@@ -626,6 +766,7 @@ namespace portal {
       std::ranges::sort(out_pipewire_streams, [](const auto &a, const auto &b) {
         return a.pos_x < b.pos_x || a.pos_y < b.pos_y;
       });
+
 
       return 0;
     }
@@ -703,17 +844,249 @@ namespace portal {
   };
 
   /**
+   * @brief Process-wide live ScreenCast session for screencast capture mode.
+   *
+   * Encoder probe and client connect each create a display backend. Without a
+   * restore_token from the portal, closing the session between those steps forces
+   * the system picker again. Keep one dbus_t alive for the process lifetime.
+   */
+  std::mutex screencast_live_mutex;
+  std::shared_ptr<dbus_t> screencast_live_dbus;
+
+  /**
+   * @brief Idle PipeWire consumer that keeps the portal node alive between clients.
+   *
+   * KDE tears down the ScreenCast PipeWire node when the last consumer disconnects.
+   * Holding a lightweight memptr consumer lets reconnect reuse the live D-Bus session
+   * without reopening the picker or attaching to a dead node.
+   */
+  struct screencast_keepalive_t {
+    std::mutex mutex;
+    std::shared_ptr<dbus_t> session;
+    std::unique_ptr<pipewire::pipewire_t> pipewire;
+    std::shared_ptr<pipewire::shared_state_t> shared;
+    uint32_t node = 0;
+  };
+
+  screencast_keepalive_t screencast_keepalive;
+
+  /**
+   * @brief Stop the process-wide screencast PipeWire keepalive consumer.
+   */
+  void stop_screencast_keepalive() {
+    std::unique_ptr<pipewire::pipewire_t> dropping_pw;
+    std::shared_ptr<pipewire::shared_state_t> dropping_shared;
+    std::shared_ptr<dbus_t> dropping_session;
+    {
+      std::scoped_lock lock(screencast_keepalive.mutex);
+      if (!screencast_keepalive.pipewire) {
+        return;
+      }
+      BOOST_LOG(info) << "[portalgrab] Stopping screencast PipeWire keepalive"sv;
+      dropping_pw = std::move(screencast_keepalive.pipewire);
+      dropping_shared = std::move(screencast_keepalive.shared);
+      dropping_session = std::move(screencast_keepalive.session);
+      screencast_keepalive.node = 0;
+    }
+    if (dropping_pw) {
+      dropping_pw->destroy();
+    }
+    dropping_pw.reset();
+    dropping_shared.reset();
+    dropping_session.reset();
+  }
+
+  /**
+   * @brief Ensure an idle PipeWire consumer is attached to the live screencast node.
+   *
+   * @param session Live screencast D-Bus session.
+   * @param node PipeWire node id from ScreenCast Start.
+   * @param width Last known width (1 if unknown).
+   * @param height Last known height (1 if unknown).
+   * @return 0 on success or when keepalive already holds the node; -1 on failure.
+   */
+  int ensure_screencast_keepalive(std::shared_ptr<dbus_t> session, uint32_t node, int width, int height) {
+    if (!session || !session->ready() || node == 0 || node == PW_ID_ANY) {
+      return -1;
+    }
+
+    {
+      std::scoped_lock lock(screencast_keepalive.mutex);
+      if (screencast_keepalive.pipewire && screencast_keepalive.session == session && screencast_keepalive.node == node) {
+        return 0;
+      }
+    }
+    stop_screencast_keepalive();
+
+    int fd = -1;
+    if (session->acquire_pipewire_fd(fd) < 0 || fd < 0) {
+      BOOST_LOG(warning) << "[portalgrab] Keepalive OpenPipeWireRemote failed"sv;
+      return -1;
+    }
+
+    auto pw = std::make_unique<pipewire::pipewire_t>();
+    auto shared = std::make_shared<pipewire::shared_state_t>();
+    if (pw->init(fd, node, SPA_ID_INVALID, shared) < 0) {
+      BOOST_LOG(warning) << "[portalgrab] Keepalive pipewire init failed"sv;
+      close(fd);
+      return -1;
+    }
+
+    const uint32_t ensure_w = width > 0 ? static_cast<uint32_t>(width) : 1u;
+    const uint32_t ensure_h = height > 0 ? static_cast<uint32_t>(height) : 1u;
+    // Memptr-only consumer: purpose is to keep the portal node alive, not to encode.
+    if (pw->ensure_stream(platf::mem_type_e::system, ensure_w, ensure_h, 60, nullptr, 0, false) < 0) {
+      BOOST_LOG(warning) << "[portalgrab] Keepalive ensure_stream failed"sv;
+      pw->destroy();
+      return -1;
+    }
+
+    {
+      std::scoped_lock lock(screencast_keepalive.mutex);
+      screencast_keepalive.session = std::move(session);
+      screencast_keepalive.pipewire = std::move(pw);
+      screencast_keepalive.shared = std::move(shared);
+      screencast_keepalive.node = node;
+    }
+    BOOST_LOG(info) << "[portalgrab] Screencast PipeWire keepalive active for node "sv << node;
+    return 0;
+  }
+
+  /**
+   * @brief Acquire a D-Bus portal client, reusing the live screencast session when possible.
+   *
+   * @param options Capture mode options.
+   * @return Shared portal D-Bus client.
+   */
+  std::shared_ptr<dbus_t> acquire_portal_dbus(session_options_t options) {
+    if (options.mode == capture_mode_e::screencast) {
+      std::shared_ptr<dbus_t> dropping;
+      {
+        std::scoped_lock lock(screencast_live_mutex);
+        if (screencast_live_dbus) {
+          if (!screencast_live_dbus->is_session_closed() && screencast_live_dbus->ready()) {
+            BOOST_LOG(info) << "[portalgrab] Reusing live screencast portal session"sv;
+            return screencast_live_dbus;
+          }
+          BOOST_LOG(info) << "[portalgrab] Dropping inactive screencast portal session"sv;
+          dropping = std::move(screencast_live_dbus);
+        }
+      }
+      if (dropping) {
+        stop_screencast_keepalive();
+        dropping.reset();
+      }
+    }
+
+    return std::make_shared<dbus_t>(std::move(options));
+  }
+
+  /**
+   * @brief Publish a successful screencast portal session for later reuse.
+   *
+   * @param session Connected screencast D-Bus client with active streams.
+   */
+  void publish_screencast_live_session(std::shared_ptr<dbus_t> session) {
+    if (!session || !session->ready() || session->mode() != capture_mode_e::screencast) {
+      return;
+    }
+    std::scoped_lock lock(screencast_live_mutex);
+    if (screencast_live_dbus != session) {
+      BOOST_LOG(info) << "[portalgrab] Publishing live screencast portal session for reuse"sv;
+      screencast_live_dbus = std::move(session);
+    }
+  }
+
+  /**
+   * @brief Drop the process-wide screencast session when the compositor closed it.
+   *
+   * @param which Session instance that observed the closure.
+   */
+  void clear_screencast_live_session(const dbus_t *which) {
+    stop_screencast_keepalive();
+    std::scoped_lock lock(screencast_live_mutex);
+    if (screencast_live_dbus.get() == which) {
+      BOOST_LOG(info) << "[portalgrab] Clearing live screencast portal session"sv;
+      screencast_live_dbus.reset();
+    }
+  }
+
+  /**
+   * @brief Release the process-wide screencast portal session before logging teardown.
+   *
+   * Must be called from platform deinit while Boost.Log is still usable. Leaving the
+   * session for static destruction runs ~dbus_t after TLS shutdown and aborts on Ctrl+C.
+   */
+  void release_screencast_live_session() {
+    stop_screencast_keepalive();
+    std::shared_ptr<dbus_t> dropping;
+    {
+      std::scoped_lock lock(screencast_live_mutex);
+      if (!screencast_live_dbus) {
+        return;
+      }
+      BOOST_LOG(info) << "[portalgrab] Releasing live screencast portal session on shutdown"sv;
+      dropping = std::move(screencast_live_dbus);
+    }
+    // Destroy outside the mutex so Close() cannot deadlock with other portal work.
+    dropping.reset();
+  }
+
+  /**
    * @brief Portal screencast backend that negotiates PipeWire streams over DBus.
    */
   class portal_t: public pipewire::pipewire_display_t {
   public:
+    /**
+     * @brief Construct a portal display backend with the given session options.
+     *
+     * @param options Capture mode options (source types, persist, token file).
+     */
+    explicit portal_t(session_options_t options):
+        dbus(acquire_portal_dbus(std::move(options))) {
+    }
+
+    /**
+     * @brief Destroy the PipeWire consumer without necessarily closing the portal session.
+     *
+     * Screencast mode keeps a process-wide portal session so encoder probe and client
+     * streaming can share one picker grant. Portal mode releases the last shared_ptr and
+     * closes the session as before.
+     */
+    ~portal_t() override {
+      // Persist last negotiated geometry on the live screencast session so the next
+      // display rebuild (e.g. window resize reinit) does not reconnect with 0x0.
+      if (dbus && width > 0 && height > 0) {
+        for (auto &stream : dbus->pipewire_streams) {
+          stream.width = width;
+          stream.height = height;
+        }
+      }
+      // Keep the portal PipeWire node alive across client disconnects / display rebuilds.
+      // Attach keepalive before destroying this display's consumer so the node never hits
+      // zero consumers (KDE would tear it down and the next connect would SIGSEGV).
+      if (dbus && dbus->mode() == capture_mode_e::screencast && dbus->ready() && !dbus->pipewire_streams.empty()) {
+        const auto &stream = dbus->pipewire_streams.front();
+        ensure_screencast_keepalive(dbus, stream.pipewire_node, width > 0 ? width : stream.width, height > 0 ? height : stream.height);
+      }
+      pipewire.destroy();
+      // Screencast keeps the process-wide D-Bus session (and keepalive) so reconnect and
+      // additional clients reuse the same picker grant without reopening the UI.
+      dbus.reset();
+    }
+
     int configure_stream(const std::string &display_name, int &out_pipewire_fd, uint32_t &out_pipewire_node, uint64_t &out_pipewire_object_serial [[maybe_unused]]) override {
-      // Connect DBus portal session
-      if (dbus.init() < 0) {
+      if (!dbus) {
+        BOOST_LOG(error) << "[portalgrab] Missing portal D-Bus client. portal_t setup failed.";
+        return -1;
+      }
+
+      // Connect DBus portal session (no-op when reusing a live screencast session).
+      if (dbus->init() < 0) {
         BOOST_LOG(error) << "[portalgrab] Failed to connect to dbus. portal_t setup failed.";
         return -1;
       }
-      if (dbus.connect_to_portal() < 0) {
+      if (dbus->connect_to_portal() < 0) {
         BOOST_LOG(error) << "[portalgrab] Failed to connect to portal. portal_t setup failed.";
         return -1;
       }
@@ -721,7 +1094,7 @@ namespace portal {
       // Match display_name to a stream from the pipewire_streams vector
       bool use_fallback = true;
       pipewire_streaminfo_t stream;
-      auto streams = dbus.pipewire_streams;
+      auto streams = dbus->pipewire_streams;
       if (streams.empty()) {
         BOOST_LOG(error) << "[portalgrab] No streams found on portal. portal_t setup failed.";
         return -1;
@@ -736,14 +1109,17 @@ namespace portal {
       // Fall back to first stream if we cannot match the given display_name to a stream in currently available streams.
       if (use_fallback) {
         BOOST_LOG(info) << "[portalgrab] Using first available stream as no matching stream was found for: '"sv << display_name << "'";
-        stream = dbus.pipewire_streams.at(0);
+        stream = dbus->pipewire_streams.at(0);
       }
 
       // Restore global maxframerate negotiation state
       pipewire.set_negotiate_maxframerate(negotiate_maxframerate.load());
 
-      // Return values for pipewire init
-      out_pipewire_fd = dbus.pipewire_fd;
+      // Each display consumer needs its own PipeWire FD from the live portal session.
+      if (dbus->acquire_pipewire_fd(out_pipewire_fd) < 0) {
+        BOOST_LOG(error) << "[portalgrab] Failed to open PipeWire remote for portal session.";
+        return -1;
+      }
       out_pipewire_node = stream.pipewire_node;
       out_pipewire_object_serial = stream.pipewire_object_serial;
       // Set/update basic stream parameters on display_t
@@ -753,7 +1129,9 @@ namespace portal {
       this->height = stream.height;
       this->logical_width = 0;  // Explicitly mark for pipewire_display_t to try to figure this out.
       this->logical_height = 0;  // Explicitly Mark for pipewire_display_t to try to figure this out.
-      // Flag successful setup
+
+      // Keep screencast sessions alive across probe/stream display rebuilds.
+      publish_screencast_live_session(dbus);
       return 0;
     }
 
@@ -765,8 +1143,9 @@ namespace portal {
      */
     bool check_stream_dead(platf::capture_e &out_status) override {
       // If the pipewire stream stopped due to closed portal session stop the capture with an error
-      if (dbus.is_session_closed()) {
+      if (dbus && dbus->is_session_closed()) {
         BOOST_LOG(warning) << "[portalgrab] PipeWire stream stopped by closed portal session."sv;
+        clear_screencast_live_session(dbus.get());
         pipewire.frame_cv().notify_all();
         out_status = platf::capture_e::error;
         return true;  // Stop capture with error (due to out_status)
@@ -782,12 +1161,139 @@ namespace portal {
       return false;  // Return to default stream dead handling
     }
 
-    // DBus portal connection
-    dbus_t dbus;  ///< DBus connection used for portal screencast requests.
+    /**
+     * @brief Run portal capture and mark that a real streaming session used this display.
+     *
+     * @param push_captured_image_cb Callback that accepts a newly captured image.
+     * @param pull_free_image_cb Callback that provides an available image buffer.
+     * @param cursor Cursor.
+     * @return Capture status reported to the streaming pipeline.
+     */
+    platf::capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) override {
+      capture_started_ = true;
+      return pipewire::pipewire_display_t::capture(push_captured_image_cb, pull_free_image_cb, cursor);
+    }
+
+    std::shared_ptr<dbus_t> dbus;  ///< DBus portal client (process-shared for screencast mode).
+    bool capture_started_ = false;  ///< True after capture() runs (excludes encoder-only probes).
 
     // Class variable to store runtime state of maxFramerate negotiation
     static inline std::atomic<bool> negotiate_maxframerate {true};  ///< Whether portal negotiation should request the maximum frame rate.
   };
+
+  /**
+   * @brief Check whether the xdg-desktop-portal ScreenCast interface is available.
+   *
+   * This does not create a portal session or show the system picker.
+   *
+   * @return True when a ScreenCast D-Bus proxy can be created on the session bus.
+   */
+  bool portal_screencast_interface_available() {
+    g_autoptr(GError) err = nullptr;
+    g_autoptr(GDBusProxy) proxy = g_dbus_proxy_new_for_bus_sync(
+      G_BUS_TYPE_SESSION,
+      static_cast<GDBusProxyFlags>(G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES | G_DBUS_PROXY_FLAGS_DO_NOT_CONNECT_SIGNALS),
+      nullptr,
+      PORTAL_NAME,
+      PORTAL_PATH,
+      SCREENCAST_IFACE,
+      nullptr,
+      &err
+    );
+    if (!proxy) {
+      if (err) {
+        BOOST_LOG(debug) << "[portalgrab] ScreenCast portal unavailable: "sv << err->message;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * @brief Create a portal-backed display for the given capture mode.
+   *
+   * @param mode Portal or screencast capture mode.
+   * @param hwdevice_type Hardware device type requested for capture or encode.
+   * @param display_name Display name.
+   * @param config Configuration values to apply.
+   * @return Display backend, or nullptr when initialization fails.
+   */
+  std::shared_ptr<platf::display_t> make_portal_display(capture_mode_e mode, platf::mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
+    using enum platf::mem_type_e;
+    if (!pipewire::pipewire_display_t::init_pipewire_and_check_hwdevice_type(hwdevice_type)) {
+      BOOST_LOG(error) << "[portalgrab] Could not initialize pipewire-based display with the given hw device type."sv;
+      return nullptr;
+    }
+
+    // Drop CAP_SYS_ADMIN, CAP_SYS_NICE and set DUMPABLE flag to allow XDG /root access
+    if (platf::has_elevated_privileges(true)) {
+      platf::drop_elevated_privileges(true);
+    }
+
+    auto options = session_options_t::for_mode(mode, config::video.screencast_persist);
+    auto portal = std::make_shared<portal_t>(std::move(options));
+    if (portal->init(hwdevice_type, display_name, config)) {
+      // Live screencast sessions can outlive the PipeWire consumer. After disconnect the
+      // portal node is often gone; drop the cache so the next attempt opens a fresh session.
+      if (mode == capture_mode_e::screencast && portal->dbus) {
+        BOOST_LOG(warning) << "[portalgrab] Clearing live screencast session after capture init failure"sv;
+        clear_screencast_live_session(portal->dbus.get());
+      }
+      return nullptr;
+    }
+
+    if (portal->dbus) {
+      for (auto &stream : portal->dbus->pipewire_streams) {
+        if (stream.match_display_name(display_name) || portal->dbus->pipewire_streams.size() == 1) {
+          stream.width = portal->width;
+          stream.height = portal->height;
+        }
+      }
+    }
+
+    return portal;
+  }
+
+  /**
+   * @brief Enumerate portal streams for the given capture mode.
+   *
+   * @param mode Portal or screencast capture mode.
+   * @return Display names, or an empty list when discovery fails.
+   */
+  std::vector<std::string> portal_display_names_for_mode(capture_mode_e mode) {
+    std::vector<std::string> display_names;
+    auto options = session_options_t::for_mode(mode, config::video.screencast_persist);
+    auto dbus = acquire_portal_dbus(std::move(options));
+
+    if (dbus->init() < 0) {
+      BOOST_LOG(warning) << "[portalgrab] Failed to connect to dbus. Cannot enumerate displays, returning empty list.";
+      return {};
+    }
+
+    if (platf::has_elevated_privileges(true)) {
+      // We're still in the probing phase of Sunshine startup. Dropping portal security early will break KMS.
+      // Just return a dummy screen for now. Display re-enumeration after encoder probing will yield full result.
+      display_names.emplace_back("init");
+      return display_names;
+    }
+
+    if (dbus->connect_to_portal() < 0) {
+      BOOST_LOG(warning) << "[portalgrab] Failed to connect to portal. Cannot enumerate displays, returning empty list.";
+      return {};
+    }
+
+    publish_screencast_live_session(dbus);
+
+
+    for (auto stream_ : dbus->pipewire_streams) {
+      BOOST_LOG(info) << "[portalgrab] Found stream for display id/name: '"sv << stream_.monitor_name << "' position: "sv << stream_.pos_x << "x"sv << stream_.pos_y << " resolution: "sv << stream_.width << "x"sv << stream_.height;
+      display_names.emplace_back(stream_.to_display_name());
+    }
+    // Keep screencast sessions alive via the live-session cache. Portal mode releases when dbus goes out of scope.
+
+    // Return currently active display names
+    return display_names;
+  }
 }  // namespace portal
 
 namespace platf {
@@ -800,23 +1306,19 @@ namespace platf {
    * @return Display backend backed by xdg-desktop-portal and PipeWire, or nullptr.
    */
   std::shared_ptr<display_t> portal_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
-    using enum platf::mem_type_e;
-    if (!pipewire::pipewire_display_t::init_pipewire_and_check_hwdevice_type(hwdevice_type)) {
-      BOOST_LOG(error) << "[portalgrab] Could not initialize pipewire-based display with the given hw device type."sv;
-      return nullptr;
-    }
+    return portal::make_portal_display(portal::capture_mode_e::portal, hwdevice_type, display_name, config);
+  }
 
-    // Drop CAP_SYS_ADMIN, CAP_SYS_NICE and set DUMPABLE flag to allow XDG /root access
-    if (has_elevated_privileges(true)) {
-      drop_elevated_privileges(true);
-    }
-
-    auto portal = std::make_shared<portal::portal_t>();
-    if (portal->init(hwdevice_type, display_name, config)) {
-      return nullptr;
-    }
-
-    return portal;
+  /**
+   * @brief Create a screencast portal display capture backend with system source picker.
+   *
+   * @param hwdevice_type Hardware device type requested for capture or encode.
+   * @param display_name Display name.
+   * @param config Configuration values to apply.
+   * @return Display backend backed by xdg-desktop-portal ScreenCast UI and PipeWire, or nullptr.
+   */
+  std::shared_ptr<display_t> screencast_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
+    return portal::make_portal_display(portal::capture_mode_e::screencast, hwdevice_type, display_name, config);
   }
 
   /**
@@ -825,34 +1327,24 @@ namespace platf {
    * @return Portal display names, or an empty list when portal discovery fails.
    */
   std::vector<std::string> portal_display_names() {
-    std::vector<std::string> display_names;
-    auto dbus = std::make_shared<portal::dbus_t>();
+    return portal::portal_display_names_for_mode(portal::capture_mode_e::portal);
+  }
 
-    if (dbus->init() < 0) {
-      BOOST_LOG(warning) << "[portalgrab] Failed to connect to dbus. Cannot enumerate displays, returning empty list.";
-      return {};
-    }
+  /**
+   * @brief Enumerate capture targets available through the screencast portal UI.
+   *
+   * @return Screencast display names, or an empty list when portal discovery fails.
+   */
+  std::vector<std::string> screencast_display_names() {
+    return portal::portal_display_names_for_mode(portal::capture_mode_e::screencast);
+  }
 
-    if (has_elevated_privileges(true)) {
-      // We're still in the probing phase of Sunshine startup. Dropping portal security early will break KMS.
-      // Just return a dummy screen for now. Display re-enumeration after encoder probing will yield full result.
-      display_names.emplace_back("init");
-      return display_names;
-    }
-
-    if (dbus->connect_to_portal() < 0) {
-      BOOST_LOG(warning) << "[portalgrab] Failed to connect to portal. Cannot enumerate displays, returning empty list.";
-      return {};
-    }
-
-    for (auto stream_ : dbus->pipewire_streams) {
-      BOOST_LOG(info) << "[portalgrab] Found stream for display id/name: '"sv << stream_.monitor_name << "' position: "sv << stream_.pos_x << "x"sv << stream_.pos_y << " resolution: "sv << stream_.width << "x"sv << stream_.height;
-      display_names.emplace_back(stream_.to_display_name());
-    }
-    // Release the portal session as soon as possible to properly release related resources early.
-    dbus.reset();
-
-    // Return currently active display names
-    return display_names;
+  /**
+   * @brief Check whether the screencast portal backend can be used without opening the picker.
+   *
+   * @return True when the ScreenCast portal D-Bus interface is available.
+   */
+  bool screencast_available() {
+    return portal::portal_screencast_interface_available();
   }
 }  // namespace platf
