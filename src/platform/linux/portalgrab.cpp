@@ -57,6 +57,18 @@ namespace {
     std::scoped_lock lock(screencast_runtime_token_mutex);
     screencast_runtime_token = token;
   }
+
+  /**
+   * @brief Clear the process-local screencast restore token.
+   */
+  void clear_screencast_runtime_token() {
+    std::scoped_lock lock(screencast_runtime_token_mutex);
+    screencast_runtime_token.clear();
+  }
+
+  // One-shot: next dbus_t::init skips restore tokens so the system picker opens again.
+  // Also suppresses keepalive in ~portal_t while the old grant is being discarded.
+  std::atomic_bool screencast_force_fresh_start {false};
 }  // namespace
 
 using namespace std::literals;
@@ -264,7 +276,12 @@ namespace portal {
         return 0;
       }
 
-      if (options_.persist_enabled) {
+      // Tray "Change Capture Source" (and similar) must open the picker even when a
+      // restore token exists from the previous grant. Cleared only after a successful Start.
+      if (screencast_force_fresh_start.load()) {
+        restore_token_.set("");
+        BOOST_LOG(info) << "[portalgrab] Forcing fresh screencast Start for source reselect"sv;
+      } else if (options_.persist_enabled) {
         restore_token_.load();
       } else if (options_.token_filename == SCREENCAST_TOKEN_FILENAME) {
         // Reuse the in-process token so encoder probe can reset the display without
@@ -350,6 +367,7 @@ namespace portal {
         return -1;
       }
 
+      screencast_force_fresh_start.store(false);
       return 0;
     }
 
@@ -888,12 +906,15 @@ namespace portal {
       dropping_session = std::move(screencast_keepalive.session);
       screencast_keepalive.node = 0;
     }
+    // Close the portal session before tearing PipeWire. After a sibling consumer on the
+    // same grant was destroyed, pw_stream_destroy on the keepalive SIGSEGVs; closing the
+    // session first and disconnecting the core avoids that path.
+    dropping_session.reset();
+    dropping_shared.reset();
     if (dropping_pw) {
-      dropping_pw->destroy();
+      dropping_pw->destroy(pipewire::pipewire_t::destroy_stream_e::via_core);
     }
     dropping_pw.reset();
-    dropping_shared.reset();
-    dropping_session.reset();
   }
 
   /**
@@ -1033,6 +1054,38 @@ namespace portal {
   }
 
   /**
+   * @brief Tear down the live screencast grant so the next capture opens a fresh picker.
+   *
+   * Only marks force-fresh and detaches the live cache. The PipeWire keepalive must remain
+   * until the active display consumer is destroyed — tearing the keepalive down first while
+   * the streaming consumer is still alive SIGSEGVs in PipeWire 1.6 (wrong-context destroy).
+   */
+  void request_screencast_source_reselect() {
+    BOOST_LOG(info) << "[portalgrab] Requesting screencast source reselect (fresh portal picker)"sv;
+    screencast_force_fresh_start.store(true);
+    clear_screencast_runtime_token();
+    // Detach the process-wide cache without destroying keepalive or closing the session yet.
+    // portal_t (active display) and keepalive still hold shared_ptrs to the same dbus_t.
+    {
+      std::scoped_lock lock(screencast_live_mutex);
+      if (screencast_live_dbus) {
+        BOOST_LOG(info) << "[portalgrab] Detaching live screencast cache for source reselect"sv;
+        screencast_live_dbus.reset();
+      }
+    }
+  }
+
+  /**
+   * @brief Drop keepalive after the active streaming consumer has been destroyed.
+   *
+   * Call only after `disp.reset()` during a mid-stream source reselect.
+   */
+  void finish_screencast_source_reselect() {
+    BOOST_LOG(info) << "[portalgrab] Finishing screencast source reselect; stopping keepalive"sv;
+    stop_screencast_keepalive();
+  }
+
+  /**
    * @brief Portal screencast backend that negotiates PipeWire streams over DBus.
    */
   class portal_t: public pipewire::pipewire_display_t {
@@ -1065,7 +1118,8 @@ namespace portal {
       // Keep the portal PipeWire node alive across client disconnects / display rebuilds.
       // Attach keepalive before destroying this display's consumer so the node never hits
       // zero consumers (KDE would tear it down and the next connect would SIGSEGV).
-      if (dbus && dbus->mode() == capture_mode_e::screencast && dbus->ready() && !dbus->pipewire_streams.empty()) {
+      // Skip while a source reselect is pending — the old grant is being discarded.
+      if (!screencast_force_fresh_start.load() && dbus && dbus->mode() == capture_mode_e::screencast && dbus->ready() && !dbus->pipewire_streams.empty()) {
         const auto &stream = dbus->pipewire_streams.front();
         ensure_screencast_keepalive(dbus, stream.pipewire_node, width > 0 ? width : stream.width, height > 0 ? height : stream.height);
       }
