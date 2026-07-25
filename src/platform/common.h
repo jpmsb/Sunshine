@@ -756,6 +756,19 @@ namespace platf {
       return true;
     }
 
+    /**
+     * @brief Consume a pending resolution-only reinit request.
+     *
+     * Some backends (e.g. PipeWire window capture) can keep the capture session alive across
+     * window resizes and only need encoders rebuilt. When this returns true after
+     * `capture_e::reinit`, the capture thread should keep the same `display_t` instance.
+     *
+     * @return True when width/height were already updated and the capture backend must be kept.
+     */
+    virtual bool consume_resolution_reinit() {
+      return false;
+    }
+
     virtual ~display_t() = default;
 
     // Offsets for when streaming a specific monitor. By default, they are 0.
