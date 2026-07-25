@@ -296,6 +296,22 @@ namespace platf {
     lifetime::exit_sunshine(0, true);
   }
 
+  /**
+   * @brief Drop the live screencast portal session so the next capture opens a fresh picker.
+   *
+   * No-op on macOS.
+   */
+  void request_screencast_source_reselect() {
+  }
+
+  /**
+   * @brief Finish a screencast source reselect after the active display was destroyed.
+   *
+   * No-op on macOS.
+   */
+  void finish_screencast_source_reselect() {
+  }
+
   bool request_process_group_exit(std::uintptr_t native_handle) {
     if (killpg((pid_t) native_handle, SIGTERM) == 0 || errno == ESRCH) {
       BOOST_LOG(debug) << "Successfully sent SIGTERM to process group: "sv << native_handle;
