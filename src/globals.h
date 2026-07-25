@@ -52,6 +52,7 @@ namespace mail {
   MAIL(video_packets);  ///< Video packets.
   MAIL(audio_packets);  ///< Audio packets.
   MAIL(switch_display);  ///< Switch display.
+  MAIL(reselect_screencast);  ///< Reselect screencast portal source mid-stream.
 
   // Local mail
   MAIL(touch_port);  ///< Touch port.
