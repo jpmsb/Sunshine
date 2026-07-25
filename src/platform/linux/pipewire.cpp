@@ -3,7 +3,11 @@
  * @brief Shared classes for pipewire-based capture methods.
  */
 // standard includes
+#include <chrono>
 #include <fstream>
+#include <optional>
+#include <string>
+#include <utility>
 
 // lib includes
 #include <gio/gio.h>
@@ -146,23 +150,42 @@ namespace pipewire {
       pw_thread_loop_start(loop);
     }
 
-    ~pipewire_t() {
-      BOOST_LOG(debug) << "[pipewire] Destroying pipewire_t"sv;
+    /**
+     * @brief Release PipeWire resources. Safe to call more than once.
+     *
+     * Subclasses that own a portal/KWin session must call this before closing
+     * that session: base-class members are destroyed after derived members, so
+     * an implicit destructor order would disconnect the stream on a dead remote.
+     */
+    void destroy() {
+      if (!loop) {
+        return;
+      }
+
+
+      BOOST_LOG(info) << "[pipewire] Destroying pipewire_t"sv;
       pw_thread_loop_lock(loop);
 
-      // Lock the frame mutex to stop fill_img
-      BOOST_LOG(debug) << "[pipewire] Stop fill_img"sv;
+      // Stop capture waiters before tearing down the stream.
+      if (stream_data.shared) {
+        stream_data.shared->stream_dead.store(true);
+      }
+
+      // Drop consumer state without queuing buffers back. Reconnect attempts that never
+      // reached STREAMING can leave current_buffer/stream inconsistent; queue+destroy
+      // has SIGSEGV'd on PipeWire 1.6.x portal FDs.
       {
         std::scoped_lock lock(stream_data.frame_mutex);
         stream_data.frame_ready = false;
         stream_data.current_buffer = nullptr;
       }
 
-      // Release pipewire stream
+      // Release pipewire stream. Use destroy only — pw_stream_destroy already disconnects,
+      // and an extra pw_stream_disconnect() has segfaulted on PipeWire 1.6.x with portal FDs
+      // when the stream is still active during encoder-probe display resets.
       if (stream_data.stream) {
-        BOOST_LOG(debug) << "[pipewire] Disconnect stream"sv;
-        pw_stream_disconnect(stream_data.stream);
-        BOOST_LOG(debug) << "[pipewire] Destroy stream"sv;
+        BOOST_LOG(debug) << "[pipewire] Deactivate and destroy stream"sv;
+        pw_stream_set_active(stream_data.stream, false);
         pw_stream_destroy(stream_data.stream);
         stream_data.stream = nullptr;
       }
@@ -182,6 +205,7 @@ namespace pipewire {
       if (fd >= 0) {
         BOOST_LOG(debug) << "[pipewire] Close pipewire_fd"sv;
         close(fd);
+        fd = -1;
       }
       // Release pipewire thread loop
       BOOST_LOG(debug) << "[pipewire] Stop PW thread loop"sv;
@@ -189,6 +213,11 @@ namespace pipewire {
       pw_thread_loop_stop(loop);
       BOOST_LOG(debug) << "[pipewire] Destroy PW thread loop"sv;
       pw_thread_loop_destroy(loop);
+      loop = nullptr;
+    }
+
+    ~pipewire_t() {
+      destroy();
     }
 
     /**
@@ -245,23 +274,24 @@ namespace pipewire {
       pw_thread_loop_lock(loop);
       BOOST_LOG(debug) << "[pipewire] Setup PW context"sv;
       context = pw_context_new(pw_thread_loop_get_loop(loop), nullptr, 0);
-      if (context) {
-        BOOST_LOG(debug) << "[pipewire] Connect PW context to fd"sv;
-        if (fd >= 0) {
-          core = pw_context_connect_fd(context, fd, nullptr, 0);
-        } else {
-          core = pw_context_connect(context, nullptr, 0);
-        }
-        if (core) {
-          pw_core_add_listener(core, &core_listener, &core_events, nullptr);
-        } else {
-          BOOST_LOG(debug) << "[pipewire] Failed to connect to PW core. Error: "sv << errno << "(" << strerror(errno) << ")"sv;
-          return -1;
-        }
-      } else {
+      if (!context) {
         BOOST_LOG(debug) << "[pipewire] Failed to setup PW context. Error: "sv << errno << "(" << strerror(errno) << ")"sv;
+        pw_thread_loop_unlock(loop);
         return -1;
       }
+
+      BOOST_LOG(debug) << "[pipewire] Connect PW context to fd"sv;
+      if (fd >= 0) {
+        core = pw_context_connect_fd(context, fd, nullptr, 0);
+      } else {
+        core = pw_context_connect(context, nullptr, 0);
+      }
+      if (!core) {
+        BOOST_LOG(debug) << "[pipewire] Failed to connect to PW core. Error: "sv << errno << "(" << strerror(errno) << ")"sv;
+        pw_thread_loop_unlock(loop);
+        return -1;
+      }
+      pw_core_add_listener(core, &core_listener, &core_events, nullptr);
 
       pw_thread_loop_unlock(loop);
       return 0;
@@ -289,51 +319,77 @@ namespace pipewire {
           return -1;
         }
 
+        // Set target before pw_stream_new — the stream takes ownership of props.
         struct pw_properties *props = pw_properties_new(PW_KEY_MEDIA_TYPE, "Video", PW_KEY_MEDIA_CATEGORY, "Capture", PW_KEY_MEDIA_ROLE, "Screen", nullptr);
+        const bool use_object_serial = SUNSHINE_USE_PIPEWIRE_OBJECT_SERIAL && (object_serial & SPA_ID_INVALID) != SPA_ID_INVALID;
+        if (use_object_serial) {
+          pw_properties_setf(props, PW_KEY_TARGET_OBJECT, "%" PRIu64, object_serial);
+        }
 
         BOOST_LOG(debug) << "[pipewire] Create PW stream"sv;
         stream_data.stream = pw_stream_new(core, "Sunshine Video Capture", props);
+        props = nullptr;
+        if (!stream_data.stream) {
+          BOOST_LOG(error) << "[pipewire] pw_stream_new failed"sv;
+          pw_thread_loop_unlock(loop);
+          return -1;
+        }
         pw_stream_add_listener(stream_data.stream, &stream_data.stream_listener, &stream_events, &stream_data);
 
-        std::array<uint8_t, SPA_POD_BUFFER_SIZE> buffer;
+        // Large enough for many DMA-BUF format+modifier EnumFormat pods.
+        std::array<uint8_t, SPA_POD_BUFFER_SIZE * 16> buffer;
         struct spa_pod_builder pod_builder = SPA_POD_BUILDER_INIT(buffer.data(), buffer.size());
 
         int n_params = 0;
-        std::array<const struct spa_pod *, MAX_PARAMS> params;
+        std::array<const struct spa_pod *, MAX_PARAMS> params {};
 
         // Add preferred parameters for DMA-BUF with modifiers
         // Use DMA-BUF for VAAPI, or for CUDA when the display GPU is NVIDIA (pure NVIDIA system).
         // On hybrid GPU systems (Intel+NVIDIA), DMA-BUFs come from the Intel GPU and cannot
         // be imported into CUDA, so we fall back to memory buffers in that case.
-        bool use_dmabuf = n_dmabuf_infos > 0 && (mem_type == platf::mem_type_e::vaapi ||
+        bool use_dmabuf = dmabuf_infos != nullptr && n_dmabuf_infos > 0 && (mem_type == platf::mem_type_e::vaapi ||
                                                  mem_type == platf::mem_type_e::vulkan ||
                                                  (mem_type == platf::mem_type_e::cuda && display_is_nvidia));
         if (use_dmabuf) {
-          for (int i = 0; i < n_dmabuf_infos; i++) {
+          for (int i = 0; i < n_dmabuf_infos && n_params < MAX_PARAMS - static_cast<int>(format_map.size()); i++) {
+            if (dmabuf_infos[i].n_modifiers > 0 && !dmabuf_infos[i].modifiers) {
+              continue;
+            }
             auto format_param = build_format_parameter(&pod_builder, width, height, refresh_rate, dmabuf_infos[i].format, dmabuf_infos[i].modifiers, dmabuf_infos[i].n_modifiers);
-            params[n_params] = format_param;
-            n_params++;
+            if (!format_param) {
+              BOOST_LOG(warning) << "[pipewire] Failed to build DMA-BUF format parameter; stopping DMA-BUF offers"sv;
+              break;
+            }
+            params[n_params++] = format_param;
           }
         }
 
         // Add fallback for memptr
         for (const auto &fmt : format_map) {
+          if (n_params >= MAX_PARAMS) {
+            break;
+          }
           auto format_param = build_format_parameter(&pod_builder, width, height, refresh_rate, fmt.pw_format, nullptr, 0);
-          params[n_params] = format_param;
-          n_params++;
+          if (!format_param) {
+            BOOST_LOG(warning) << "[pipewire] Failed to build memptr format parameter"sv;
+            break;
+          }
+          params[n_params++] = format_param;
         }
 
-        // Connection via pipewire object serial if it is supported and the serial is valid (lower 32-bits != SPA_ID_INVALID, see also PW_KEY_OBJECT_SERIAL docs)
-        if (SUNSHINE_USE_PIPEWIRE_OBJECT_SERIAL && (object_serial & SPA_ID_INVALID) != SPA_ID_INVALID) {
-          pw_properties_setf(props, PW_KEY_TARGET_OBJECT, "%" PRIu64, object_serial);
+        if (n_params <= 0) {
+          BOOST_LOG(error) << "[pipewire] No format parameters available for PW stream connect"sv;
+          pw_stream_destroy(stream_data.stream);
+          stream_data.stream = nullptr;
+          pw_thread_loop_unlock(loop);
+          return -1;
+        }
+
+        if (use_object_serial) {
           BOOST_LOG(debug) << "[pipewire] Connect PW stream - fd: "sv << fd << " object serial: "sv << object_serial;
           result = pw_stream_connect(stream_data.stream, PW_DIRECTION_INPUT, PW_ID_ANY, (enum pw_stream_flags)(PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS), params.data(), n_params);
-          if (result < 0) {
-            // Unset object serial for retry with node id
-            pw_properties_set(props, PW_KEY_TARGET_OBJECT, nullptr);
-          }
         } else {
-          result = -1;  // Mark failed so we try to connect via node id
+          result = -1;
         }
         // Connection via legacy (and deprecated) pipewire node id
         if (result < 0) {
@@ -429,12 +485,12 @@ namespace pipewire {
       }
 
       struct spa_buffer *buf = stream_data.current_buffer->buffer;
-      if (buf->datas[0].chunk->size != 0) {
+      if (buf->n_datas > 0 && buf->datas[0].chunk && buf->datas[0].chunk->size != 0) {
         auto *img_descriptor = static_cast<egl::img_descriptor_t *>(img);
         fill_img_metadata(img_descriptor, buf);
         if (buf->datas[0].type == SPA_DATA_DmaBuf) {
           fill_img_dmabuf(img_descriptor, buf, stream_data);
-        } else {
+        } else if (stream_data.front_buffer) {
           img->data = stream_data.front_buffer->data();
           img->row_pitch = stream_data.local_stride;
         }
@@ -535,25 +591,24 @@ namespace pipewire {
 
       switch (state) {
         case PW_STREAM_STATE_PAUSED:
-          if (d->shared && old == PW_STREAM_STATE_STREAMING) {
-            {
-              std::scoped_lock lock(d->frame_mutex);
-              d->frame_ready = false;
-              d->current_buffer = nullptr;
-              d->shared->stream_dead.store(true);
-              d->shared->current_state = state;
-              d->shared->previous_state = old;
-              d->shared->err_msg = "";
-            }
-            d->frame_cv.notify_all();
+          // Window/monitor resize renegotiates format via STREAMING → PAUSED → STREAMING.
+          // Treating that pause as a dead stream forces a full display reinit that races the
+          // producer and often fails for portal window streams that omit ScreenCast `size`.
+          if (d->shared) {
+            std::scoped_lock lock(d->frame_mutex);
+            d->shared->current_state = state;
+            d->shared->previous_state = old;
+            d->shared->err_msg = "";
           }
           break;
         case PW_STREAM_STATE_ERROR:
           {
             std::scoped_lock lock(d->frame_mutex);
-            d->shared->current_state = state;
-            d->shared->previous_state = old;
-            d->shared->err_msg = std::string(err_msg);
+            if (d->shared) {
+              d->shared->current_state = state;
+              d->shared->previous_state = old;
+              d->shared->err_msg = std::string(err_msg ? err_msg : "");
+            }
           }
           [[fallthrough]];
         case PW_STREAM_STATE_UNCONNECTED:
@@ -580,6 +635,11 @@ namespace pipewire {
       }
 
       if (!b) {
+        return;
+      }
+
+      if (!b->buffer || b->buffer->n_datas == 0) {
+        pw_stream_queue_buffer(d->stream, b);
         return;
       }
 
@@ -844,7 +904,11 @@ namespace pipewire {
       }
 
       // Start PipeWire now so format negotiation can proceed before capture start
-      if (pipewire.ensure_stream(mem_type, width, height, framerate, dmabuf_infos.data(), n_dmabuf_infos, display_is_nvidia) < 0) {
+      // Prefer portal-reported size when present; otherwise prefer 1x1 so the CHOICE_RANGE
+      // lets the compositor pick the real window size (avoid forcing 1920x1080).
+      const uint32_t ensure_w = width > 0 ? static_cast<uint32_t>(width) : 1u;
+      const uint32_t ensure_h = height > 0 ? static_cast<uint32_t>(height) : 1u;
+      if (pipewire.ensure_stream(mem_type, ensure_w, ensure_h, framerate, dmabuf_infos.data(), n_dmabuf_infos, display_is_nvidia) < 0) {
         BOOST_LOG(error) << "[pipewire] Failed to ensure pipewire stream. pipewire_t::init() failed.";
         return -1;
       }
@@ -862,8 +926,15 @@ namespace pipewire {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         timeout_ms -= 10;
       }
-      // Set width and height to the values negotiated by pipewire
-      if (negotiated_w > 0 && negotiated_h > 0 && (negotiated_w != width || negotiated_h != height)) {
+      // Portal-reported size is optional (window streams often omit it). Never treat a cached
+      // size as success without PipeWire format negotiation — reconnecting to a dead node
+      // after the last consumer disconnects would otherwise start a half-dead session and
+      // SIGSEGV on the next teardown.
+      if (negotiated_w <= 0 || negotiated_h <= 0) {
+        BOOST_LOG(error) << "[pipewire] PipeWire did not negotiate a valid resolution for the stream"sv;
+        return -1;
+      }
+      if (negotiated_w != width || negotiated_h != height) {
         width = negotiated_w;
         height = negotiated_h;
         BOOST_LOG(info) << "[pipewire] Using negotiated Resolution: "sv << width << "x" << height;
@@ -952,6 +1023,19 @@ namespace pipewire {
       return false;  // Return to default stream dead handling.
     }
 
+    /**
+     * @brief Consume a pending resolution-only reinit after a window resize.
+     *
+     * @return True when PipeWire already applied the new size and must stay connected.
+     */
+    bool consume_resolution_reinit() override {
+      if (!resolution_reinit_pending_) {
+        return false;
+      }
+      resolution_reinit_pending_ = false;
+      return true;
+    }
+
     platf::capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) override {
       auto next_frame = std::chrono::steady_clock::now();
 
@@ -971,6 +1055,35 @@ namespace pipewire {
           // Re-init the capture if the stream is dead for any other reason
           BOOST_LOG(warning) << "[pipewire] PipeWire stream disconnected. Forcing session reset."sv;
           return platf::capture_e::reinit;
+        }
+
+        // Window resize updates negotiated size in-place. Debounce before asking the capture
+        // pipeline to rebuild encoders: continuous drag otherwise destroys/recreates the
+        // PipeWire consumer on every intermediate size and can stall or crash the session.
+        {
+          const int negotiated_w = shared_state->negotiated_width.load();
+          const int negotiated_h = shared_state->negotiated_height.load();
+          if (negotiated_w > 0 && negotiated_h > 0 && (negotiated_w != width || negotiated_h != height)) {
+            const auto now_tp = std::chrono::steady_clock::now();
+            if (!pending_resolution_ || pending_resolution_->first != negotiated_w || pending_resolution_->second != negotiated_h) {
+              pending_resolution_ = {negotiated_w, negotiated_h};
+              pending_resolution_since_ = now_tp;
+            } else if (now_tp - pending_resolution_since_ >= resolution_reinit_debounce_) {
+              BOOST_LOG(info) << "[pipewire] Stream resolution changed: "sv << width << 'x' << height
+                              << " -> "sv << negotiated_w << 'x' << negotiated_h;
+              width = negotiated_w;
+              height = negotiated_h;
+              pending_resolution_.reset();
+              // Keep the PipeWire consumer alive; only encoders need to rebuild.
+              resolution_reinit_pending_ = true;
+              return platf::capture_e::reinit;
+            }
+            // Skip mismatched frames while the size is still changing.
+            next_frame = now_tp + delay;
+            std::this_thread::sleep_until(next_frame);
+            continue;
+          }
+          pending_resolution_.reset();
         }
 
         // Advance to (or catch up with) next delay interval
@@ -1257,6 +1370,11 @@ namespace pipewire {
     std::optional<std::uint64_t> last_seq {};
     std::uint64_t sequence {};
     uint32_t framerate;
+    /// Pending PipeWire size while the window is being resized; reinit only after it stabilizes.
+    std::optional<std::pair<int, int>> pending_resolution_;
+    std::chrono::steady_clock::time_point pending_resolution_since_ {};
+    static constexpr std::chrono::milliseconds resolution_reinit_debounce_ {300};
+    bool resolution_reinit_pending_ = false;  ///< True when capture requested encoder-only reinit.
 
   protected:
     // Allow subclasses to access for pipewire requirements setup and stream dead checks
