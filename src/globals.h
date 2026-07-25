@@ -53,6 +53,7 @@ namespace mail {
   MAIL(audio_packets);  ///< Audio packets.
   MAIL(switch_display);  ///< Switch display.
   MAIL(reselect_screencast);  ///< Reselect screencast portal source mid-stream.
+  MAIL(screencast_ready);  ///< Screencast portal session became available (boot or swap).
 
   // Local mail
   MAIL(touch_port);  ///< Touch port.
