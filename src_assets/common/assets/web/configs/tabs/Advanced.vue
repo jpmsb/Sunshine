@@ -68,6 +68,7 @@ const config = ref(props.config)
             <option value="wlr">wlroots</option>
             <option value="x11">X11</option>
             <option value="portal">XDG Portal</option>
+            <option value="screencast">ScreenCast (Pipewire)</option>
           </template>
           <template #linux>
             <option value="nvfbc">NvFBC</option>
@@ -76,6 +77,7 @@ const config = ref(props.config)
             <option value="x11">X11</option>
             <option value="kwin">KWin Screencast</option>
             <option value="portal">XDG Portal</option>
+            <option value="screencast">ScreenCast (Pipewire)</option>
           </template>
           <template #windows>
             <option value="ddx">Desktop Duplication API</option>
@@ -84,6 +86,16 @@ const config = ref(props.config)
         </PlatformLayout>
       </select>
       <div class="form-text">{{ $t('config.capture_desc') }}</div>
+    </div>
+
+    <!-- Screencast persist -->
+    <div class="mb-3" v-if="(platform === 'linux' || platform === 'freebsd') && config.capture === 'screencast'">
+      <label for="screencast_persist" class="form-label">{{ $t('config.screencast_persist') }}</label>
+      <select id="screencast_persist" class="form-select" v-model="config.screencast_persist">
+        <option value="disabled">{{ $t('_common.disabled_def') }}</option>
+        <option value="enabled">{{ $t('_common.enabled') }}</option>
+      </select>
+      <div class="form-text">{{ $t('config.screencast_persist_desc') }}</div>
     </div>
 
     <!-- Encoder -->
