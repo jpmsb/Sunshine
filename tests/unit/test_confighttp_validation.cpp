@@ -50,6 +50,8 @@ TEST(ConfighttpValidationTest, ValidateConfigPatchAcceptsScreencastCapture) {
   const nlohmann::json patch = {
     {"capture", "screencast"},
     {"screencast_persist", "enabled"},
+    {"screencast_placeholder_color", "#102030"},
+    {"screencast_placeholder_text", "Select a screen"},
   };
 
   ASSERT_FALSE(confighttp_validation::validate_config_patch(patch).has_value());
