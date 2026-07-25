@@ -2204,7 +2204,7 @@ min_log_level = 2
             @endcode</td>
     </tr>
     <tr>
-        <td rowspan="6">Choices</td>
+        <td rowspan="9">Choices</td>
         <td>nvfbc</td>
         <td>Use NVIDIA Frame Buffer Capture to capture direct to GPU memory. This is usually the fastest method for
             NVIDIA cards. NvFBC does not have native Wayland support and does not work with XWayland.
@@ -2227,6 +2227,18 @@ min_log_level = 2
             @note{Applies to Linux only.}</td>
     </tr>
     <tr>
+        <td>portal</td>
+        <td>Capture via xdg-desktop-portal (monitors) and PipeWire. Uses a restore token to skip repeated prompts.
+            @note{Applies to FreeBSD and Linux only.}</td>
+    </tr>
+    <tr>
+        <td>screencast</td>
+        <td>Capture via xdg-desktop-portal ScreenCast UI over PipeWire (monitors and windows), similar to browser/Discord screen share.
+            Pair with `screencast_persist` to optionally remember the selection.
+            @note{Applies to FreeBSD and Linux only.}
+            @attention{When capturing a window, remote input still targets the desktop session and may not align with the window.}</td>
+    </tr>
+    <tr>
         <td>x11</td>
         <td>Uses XCB. This is the slowest and most CPU intensive so should be avoided if possible.
             @note{Applies to FreeBSD and Linux only.}</td>
@@ -2241,6 +2253,30 @@ min_log_level = 2
         <td>(beta feature) Use Windows.Graphics.Capture to capture the display.
             @note{Applies to Windows only.}
             @attention{This capture method is not compatible with the Sunshine service.}</td>
+    </tr>
+</table>
+
+### screencast_persist
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            When `capture = screencast`, persist the portal ScreenCast selection with a restore token so the system
+            picker can be skipped on later streams across Sunshine restarts. When disabled, Sunshine still uses an
+            in-memory restore token for the current process (so encoder probe does not reopen the picker repeatedly),
+            but the selection is not written to disk.
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">Disabled</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            screencast_persist = enabled
+            @endcode</td>
     </tr>
 </table>
 
