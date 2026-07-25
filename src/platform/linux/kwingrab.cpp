@@ -669,6 +669,17 @@ namespace kwin {
    */
   class kwin_t: public pipewire::pipewire_display_t {
   public:
+    /**
+     * @brief Destroy PipeWire before releasing the KWin screencast session.
+     *
+     * Same destruction-order constraint as the portal backend: the derived
+     * `screencast` member is destroyed before the base-class `pipewire` member.
+     */
+    ~kwin_t() override {
+      pipewire.destroy();
+      screencast.reset();
+    }
+
     int configure_stream(const std::string &display_name, int &out_pipewire_fd, uint32_t &out_pipewire_node, uint64_t &out_pipewire_objectserial) override {
       screencast = std::make_unique<screencast_t>();
       if (screencast->init(true) < 0) {
