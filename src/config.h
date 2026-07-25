@@ -119,6 +119,8 @@ namespace config {
 
     std::string capture;  ///< Capture backend name selected by configuration.
     bool screencast_persist;  ///< Persist screencast portal source selection via restore token.
+    std::string screencast_placeholder_color;  ///< Hex `#RRGGBB`/`#RRGGBBAA` background for screencast wait screen.
+    std::string screencast_placeholder_text;  ///< Text on screencast wait screen; empty uses the hostname.
     std::string encoder;  ///< Encoder backend name selected by configuration.
     std::string adapter_name;  ///< Display adapter name selected in configuration.
     std::string output_name;  ///< Display output name selected in configuration.
