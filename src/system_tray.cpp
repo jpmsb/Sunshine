@@ -124,11 +124,12 @@ namespace system_tray {
 
     // With no active stream the capture thread is not running — drop the live grant
     // so the next client connect opens a fresh picker once. No active consumer, so
-    // finish() can stop keepalive immediately after request().
+    // finish() can stop keepalive immediately after request(). Then reopen the picker.
     if (rtsp_stream::list_active_sessions().empty()) {
       BOOST_LOG(info) << "No active clients; clearing screencast session for next connect"sv;
       platf::request_screencast_source_reselect();
       platf::finish_screencast_source_reselect();
+      platf::start_screencast_bootstrap();
       return;
     }
 
