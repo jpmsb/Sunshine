@@ -116,6 +116,40 @@ namespace portal {
    * @brief Stop screencast keepalive after the active display consumer was destroyed.
    */
   void finish_screencast_source_reselect();
+
+  /**
+   * @brief Whether a mid-stream shadow screencast session is waiting to be applied.
+   *
+   * @return True when a successful shadow picker result is pending commit.
+   */
+  bool has_pending_screencast_swap();
+
+  /**
+   * @brief Start boot-time ScreenCast picker on a background thread.
+   */
+  void screencast_bootstrap_start();
+
+  /**
+   * @brief Join the boot-time ScreenCast picker thread during platform teardown.
+   */
+  void screencast_bootstrap_stop_join();
+
+  /**
+   * @brief Open a shadow ScreenCast picker without interrupting capture.
+   */
+  void begin_screencast_source_reselect();
+
+  /**
+   * @brief Commit a pending shadow session before display teardown.
+   *
+   * @return True when finish_screencast_session_swap() is required after disp.reset().
+   */
+  bool apply_screencast_ready();
+
+  /**
+   * @brief Close the previous session after a mid-stream swap.
+   */
+  void finish_screencast_session_swap();
 }  // namespace portal
 #endif
 
@@ -1380,6 +1414,68 @@ namespace platf {
   }
 
   /**
+   * @brief Open a shadow ScreenCast picker without interrupting the current capture.
+   */
+  void begin_screencast_source_reselect() {
+#ifdef SUNSHINE_BUILD_PORTAL
+    if (config::video.capture == "screencast") {
+      ::portal::begin_screencast_source_reselect();
+    }
+#endif
+  }
+
+  /**
+   * @brief Apply a pending screencast session before tearing down the current display.
+   *
+   * @return True when finish_screencast_session_swap() must run after disp.reset().
+   */
+  bool apply_screencast_ready() {
+#ifdef SUNSHINE_BUILD_PORTAL
+    if (config::video.capture == "screencast") {
+      return ::portal::apply_screencast_ready();
+    }
+#endif
+    return false;
+  }
+
+  /**
+   * @brief Close the previous screencast session after a successful mid-stream swap.
+   */
+  void finish_screencast_session_swap() {
+#ifdef SUNSHINE_BUILD_PORTAL
+    if (config::video.capture == "screencast") {
+      ::portal::finish_screencast_session_swap();
+    }
+#endif
+  }
+
+  /**
+   * @brief Start (or restart) the background ScreenCast portal picker.
+   */
+  void start_screencast_bootstrap() {
+#ifdef SUNSHINE_BUILD_PORTAL
+    if (config::video.capture == "screencast") {
+      ::portal::screencast_bootstrap_stop_join();
+      ::portal::screencast_bootstrap_start();
+    }
+#endif
+  }
+
+  /**
+   * @brief Whether a mid-stream shadow screencast session is waiting to be applied.
+   *
+   * @return True when a successful shadow picker result is pending commit.
+   */
+  bool has_pending_screencast_swap() {
+#ifdef SUNSHINE_BUILD_PORTAL
+    if (config::video.capture == "screencast") {
+      return ::portal::has_pending_screencast_swap();
+    }
+#endif
+    return false;
+  }
+
+  /**
    * @brief Linux platform RAII cleanup run before Boost.Log is destroyed.
    */
   class platform_deinit_t: public deinit_t {
@@ -1389,6 +1485,7 @@ namespace platf {
      */
     ~platform_deinit_t() override {
 #ifdef SUNSHINE_BUILD_PORTAL
+      ::portal::screencast_bootstrap_stop_join();
       ::portal::release_screencast_live_session();
 #endif
     }
@@ -1453,6 +1550,7 @@ namespace platf {
     // Screencast is opt-in only; never auto-selected when capture is empty.
     if (config::video.capture == "screencast" && verify_screencast()) {
       sources[source::SCREENCAST] = true;
+      ::portal::screencast_bootstrap_start();
     }
 #endif
 #ifdef SUNSHINE_BUILD_KWIN
