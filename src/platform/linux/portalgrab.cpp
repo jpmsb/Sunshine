@@ -874,14 +874,14 @@ namespace portal {
    * the system picker again. Keep one dbus_t alive for the process lifetime.
    */
   std::mutex screencast_live_mutex;
-  std::shared_ptr<dbus_t> screencast_live_dbus;
+  std::shared_ptr<dbus_t> screencast_live_dbus;  ///< Process-wide live ScreenCast D-Bus session.
   std::shared_ptr<dbus_t> screencast_pending_shadow;  ///< Shadow session awaiting capture-thread commit.
   std::shared_ptr<dbus_t> screencast_old_session_to_close;  ///< Previous live session closed after swap.
 
   std::mutex screencast_picker_mutex;  ///< Serialize bootstrap and shadow pickers.
-  std::atomic_bool screencast_bootstrap_stop {false};
-  std::thread screencast_bootstrap_thread;
-  std::atomic_bool screencast_reselect_running {false};
+  std::atomic_bool screencast_bootstrap_stop {false};  ///< Set when the boot-time ScreenCast picker thread should exit.
+  std::thread screencast_bootstrap_thread;  ///< Thread that runs the boot-time ScreenCast portal picker.
+  std::atomic_bool screencast_reselect_running {false};  ///< True while a mid-stream shadow reselect picker is active.
 
   /**
    * @brief Idle PipeWire consumer that keeps the portal node alive between clients.
@@ -891,14 +891,14 @@ namespace portal {
    * without reopening the picker or attaching to a dead node.
    */
   struct screencast_keepalive_t {
-    std::mutex mutex;
-    std::shared_ptr<dbus_t> session;
-    std::unique_ptr<pipewire::pipewire_t> pipewire;
-    std::shared_ptr<pipewire::shared_state_t> shared;
-    uint32_t node = 0;
+    std::mutex mutex;  ///< Guards keepalive PipeWire consumer state.
+    std::shared_ptr<dbus_t> session;  ///< Portal session whose PipeWire node is held open.
+    std::unique_ptr<pipewire::pipewire_t> pipewire;  ///< Idle PipeWire consumer for the portal node.
+    std::shared_ptr<pipewire::shared_state_t> shared;  ///< Shared PipeWire state for the keepalive consumer.
+    uint32_t node = 0;  ///< PipeWire node ID currently held by the keepalive consumer.
   };
 
-  screencast_keepalive_t screencast_keepalive;
+  screencast_keepalive_t screencast_keepalive;  ///< Process-wide PipeWire keepalive for the live portal node.
 
   /**
    * @brief Raise mail::screencast_ready when the mail bus is available.
