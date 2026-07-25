@@ -59,10 +59,19 @@ elseif(UNIX)
     endif()
 endif()
 
-include_directories(
-        BEFORE SYSTEM
-        "${CMAKE_SOURCE_DIR}/third-party/build-deps/third-party/FFmpeg/nv-codec-headers/include"
-)
+# NVENC headers live under build-deps (see LizardByte/Sunshine#5449). RPM/OBS/COPR
+# packaging excludes the full build-deps submodule; prepare_rpm_source.sh re-injects
+# only nv-codec-headers so this path still exists in those tarballs.
+set(NV_CODEC_HEADERS_DIR
+        "${CMAKE_SOURCE_DIR}/third-party/build-deps/third-party/FFmpeg/nv-codec-headers/include")
+if(NOT EXISTS "${NV_CODEC_HEADERS_DIR}/ffnvcodec/nvEncodeAPI.h")
+    message(FATAL_ERROR
+            "nv-codec-headers not found at:\n"
+            "  ${NV_CODEC_HEADERS_DIR}\n"
+            "Initialize third-party/build-deps, or run scripts/prepare_rpm_source.sh "
+            "(which clones FFmpeg nv-codec-headers sdk/13.0 for packaging).")
+endif()
+include_directories(BEFORE SYSTEM "${NV_CODEC_HEADERS_DIR}")
 file(GLOB NVENC_SOURCES CONFIGURE_DEPENDS "src/nvenc/*.cpp" "src/nvenc/*.h")
 list(APPEND PLATFORM_TARGET_FILES ${NVENC_SOURCES})
 
