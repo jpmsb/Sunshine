@@ -769,6 +769,15 @@ namespace platf {
       return false;
     }
 
+    /**
+     * @brief Whether this display is a synthetic waiting placeholder (no real capture yet).
+     *
+     * @return True for screencast placeholder screens shown before portal Start.
+     */
+    virtual bool is_placeholder() const {
+      return false;
+    }
+
     virtual ~display_t() = default;
 
     // Offsets for when streaming a specific monitor. By default, they are 0.
@@ -927,6 +936,37 @@ namespace platf {
    * Stops the idle PipeWire keepalive. No-op when screencast portal is unavailable.
    */
   void finish_screencast_source_reselect();
+
+  /**
+   * @brief Open a shadow ScreenCast picker without interrupting the current capture.
+   *
+   * On success raises `mail::screencast_ready` so the capture thread can swap sessions.
+   */
+  void begin_screencast_source_reselect();
+
+  /**
+   * @brief Apply a pending screencast session before tearing down the current display.
+   *
+   * @return True when `finish_screencast_session_swap()` must run after `disp.reset()`.
+   */
+  bool apply_screencast_ready();
+
+  /**
+   * @brief Close the previous screencast session after a successful mid-stream swap.
+   */
+  void finish_screencast_session_swap();
+
+  /**
+   * @brief Start (or restart) the background ScreenCast portal picker.
+   */
+  void start_screencast_bootstrap();
+
+  /**
+   * @brief Whether a mid-stream shadow screencast session is waiting to be applied.
+   *
+   * @return True when a successful shadow picker result is pending commit.
+   */
+  bool has_pending_screencast_swap();
 
   /**
    * @brief Check if GPUs/drivers have changed since the last call to this function.
