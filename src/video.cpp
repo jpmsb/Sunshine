@@ -1524,6 +1524,7 @@ namespace video {
     });
 
     auto switch_display_event = mail::man->event<int>(mail::switch_display);
+    auto reselect_screencast_event = mail::man->event<bool>(mail::reselect_screencast);
 
     // Wait for the initial capture context or a request to stop the queue
     auto initial_capture_ctx = capture_ctx_queue->pop();
@@ -1670,7 +1671,7 @@ namespace video {
           capture_ctxs.emplace_back(std::move(*capture_ctx_queue->pop()));
         }
 
-        if (switch_display_event->peek()) {
+        if (switch_display_event->peek() || reselect_screencast_event->peek()) {
           artificial_reinit = true;
           return false;
         }
@@ -1719,9 +1720,17 @@ namespace video {
               std::this_thread::sleep_for(20ms);
             }
 
+            // Tray / API asked for a new portal ScreenCast source — always full rebuild.
+            const bool force_screencast_reselect = reselect_screencast_event->peek();
+            if (force_screencast_reselect) {
+              reselect_screencast_event->pop();
+              BOOST_LOG(info) << "Reselecting screencast capture source; rebuilding capture session"sv;
+              platf::request_screencast_source_reselect();
+            }
+
             // PipeWire window resize already updated display width/height and keeps the stream
             // connected. Recreating the portal consumer races the producer and has segfaulted.
-            if (disp && disp->consume_resolution_reinit()) {
+            if (!force_screencast_reselect && disp && disp->consume_resolution_reinit()) {
               BOOST_LOG(info) << "Display resolution changed; keeping capture session and rebuilding encoders"sv;
               imgs = std::list<std::shared_ptr<platf::img_t>>(capture_buffer_size);
               display_wp = disp;
@@ -1734,12 +1743,22 @@ namespace video {
               // only support a single display session per device/application.
               disp.reset();
 
+              // Keepalive must outlive the active consumer; tear it down only after disp.reset().
+              if (force_screencast_reselect) {
+                platf::finish_screencast_source_reselect();
+              }
+
               // Refresh display names since a display removal might have caused the reinitialization
               refresh_displays(encoder.platform_formats->dev_type, display_names, display_p);
 
               // Process any pending display switch with the new list of displays
               if (switch_display_event->peek()) {
                 display_p = std::clamp(*switch_display_event->pop(), 0, (int) display_names.size() - 1);
+              }
+
+              // After a screencast reselect the previous display name is usually gone; prefer index 0.
+              if (force_screencast_reselect && !display_names.empty()) {
+                display_p = 0;
               }
 
               // reset_display() will sleep between retries
@@ -2656,6 +2675,7 @@ namespace video {
     std::shared_ptr<platf::display_t> disp;
 
     auto switch_display_event = mail::man->event<int>(mail::switch_display);
+    auto reselect_screencast_event = mail::man->event<bool>(mail::reselect_screencast);
 
     if (synced_session_ctxs.empty()) {
       auto ctx = encode_session_ctx_queue.pop();
@@ -2668,11 +2688,24 @@ namespace video {
 
     while (encode_session_ctx_queue.running()) {
       // Refresh display names since a display removal might have caused the reinitialization
+      const bool force_screencast_reselect = reselect_screencast_event->peek();
+      if (force_screencast_reselect) {
+        reselect_screencast_event->pop();
+        BOOST_LOG(info) << "Reselecting screencast capture source; rebuilding capture session"sv;
+        platf::request_screencast_source_reselect();
+        disp.reset();
+        platf::finish_screencast_source_reselect();
+      }
+
       refresh_displays(encoder.platform_formats->dev_type, display_names, display_p);
 
       // Process any pending display switch with the new list of displays
       if (switch_display_event->peek()) {
         display_p = std::clamp(*switch_display_event->pop(), 0, (int) display_names.size() - 1);
+      }
+
+      if (force_screencast_reselect && !display_names.empty()) {
+        display_p = 0;
       }
 
       // reset_display() will sleep between retries
@@ -2775,7 +2808,7 @@ namespace video {
           ++pos;
         })
 
-        if (switch_display_event->peek()) {
+        if (switch_display_event->peek() || reselect_screencast_event->peek()) {
           ec = platf::capture_e::reinit;
           return false;
         }
@@ -2792,7 +2825,7 @@ namespace video {
       auto status = disp->capture(push_captured_image_callback, pull_free_image_callback, &display_cursor);
       switch (status) {
         case platf::capture_e::reinit:
-          if (disp && disp->consume_resolution_reinit()) {
+          if (!reselect_screencast_event->peek() && disp && disp->consume_resolution_reinit()) {
             BOOST_LOG(info) << "Display resolution changed; keeping capture session and rebuilding encoders"sv;
             img = disp->alloc_img();
             if (!img || disp->dummy_img(img.get())) {
