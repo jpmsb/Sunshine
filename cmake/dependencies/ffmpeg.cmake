@@ -18,20 +18,35 @@ if(NOT DEFINED FFMPEG_PREPARED_BINARIES)
     # Determine download location
     set(FFMPEG_DOWNLOAD_DIR "${CMAKE_BINARY_DIR}/_deps")
 
-    # Fetch tags for the build-deps submodule so tag lookups work in CI shallow clones
-    execute_process(
-        COMMAND git -C "${CMAKE_SOURCE_DIR}/third-party/build-deps" fetch --tags --depth=1
-        OUTPUT_QUIET
-        ERROR_QUIET
-    )
+    set(FFMPEG_RELEASE_TAG "")
+    # RPM/OBS/COPR tarballs strip build-deps/.git; prepare_rpm_source.sh writes this stamp
+    # so we still download the FFmpeg bundle that matches the pinned submodule (not latest).
+    set(_SUNSHINE_FFMPEG_TAG_FILE
+            "${CMAKE_SOURCE_DIR}/packaging/linux/.sunshine-ffmpeg-tag")
+    if(EXISTS "${_SUNSHINE_FFMPEG_TAG_FILE}")
+        file(READ "${_SUNSHINE_FFMPEG_TAG_FILE}" FFMPEG_RELEASE_TAG)
+        string(STRIP "${FFMPEG_RELEASE_TAG}" FFMPEG_RELEASE_TAG)
+        if(FFMPEG_RELEASE_TAG)
+            message(STATUS "Using FFmpeg tag from packaging stamp: ${FFMPEG_RELEASE_TAG}")
+        endif()
+    endif()
 
-    # Get the current commit/tag from the build-deps submodule
-    execute_process(
-        COMMAND git -C "${CMAKE_SOURCE_DIR}/third-party/build-deps" describe --tags --exact-match
-        OUTPUT_VARIABLE FFMPEG_RELEASE_TAG
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
+    if(NOT FFMPEG_RELEASE_TAG)
+        # Fetch tags for the build-deps submodule so tag lookups work in CI shallow clones
+        execute_process(
+            COMMAND git -C "${CMAKE_SOURCE_DIR}/third-party/build-deps" fetch --tags --depth=1
+            OUTPUT_QUIET
+            ERROR_QUIET
+        )
+
+        # Get the current commit/tag from the build-deps submodule
+        execute_process(
+            COMMAND git -C "${CMAKE_SOURCE_DIR}/third-party/build-deps" describe --tags --exact-match
+            OUTPUT_VARIABLE FFMPEG_RELEASE_TAG
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+    endif()
 
     # If no exact tag match, try to get the commit hash and look for a tag
     if(NOT FFMPEG_RELEASE_TAG)
@@ -58,9 +73,12 @@ if(NOT DEFINED FFMPEG_PREPARED_BINARIES)
         set(FFMPEG_VERSION_DIR "${FFMPEG_DOWNLOAD_DIR}/ffmpeg-${FFMPEG_RELEASE_TAG}")
         message(STATUS "Using FFmpeg from build-deps tag: ${FFMPEG_RELEASE_TAG}")
     else()
-        set(FFMPEG_RELEASE_URL "https://github.com/${FFMPEG_GITHUB_REPO}/releases/latest/download")
-        set(FFMPEG_VERSION_DIR "${FFMPEG_DOWNLOAD_DIR}/ffmpeg-latest")
-        message(STATUS "Using FFmpeg from latest build-deps release")
+        message(FATAL_ERROR
+                "Could not resolve a build-deps FFmpeg release tag.\n"
+                "Initialize third-party/build-deps, or ensure packaging wrote\n"
+                "  ${_SUNSHINE_FFMPEG_TAG_FILE}\n"
+                "Falling back to 'latest' is disabled because newer bundles can ship\n"
+                "ffnvcodec headers that break the NVENCAPI_VERSION guard.")
     endif()
 
     # Set extraction directory and prepared binaries path
