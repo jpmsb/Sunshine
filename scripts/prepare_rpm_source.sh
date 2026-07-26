@@ -143,15 +143,19 @@ function ensure_nv_codec_headers() {
   local dest="${source_root}/third-party/build-deps/third-party/FFmpeg/nv-codec-headers"
   local hdr="${dest}/include/ffnvcodec/nvEncodeAPI.h"
   if [[ -f "${hdr}" ]]; then
-    echo "nv-codec-headers already present at ${dest}"
-    return 0
-  fi
-
-  echo "nv-codec-headers missing (build-deps skipped); cloning FFmpeg sdk/13.0..."
-  mkdir -p "$(dirname "${dest}")"
-  if [[ -e "${dest}" ]]; then
+    local major minor
+    major="$(sed -n 's/^#define NVENCAPI_MAJOR_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' "${hdr}" | head -1)"
+    minor="$(sed -n 's/^#define NVENCAPI_MINOR_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' "${hdr}" | head -1)"
+    if [[ "${major}" == "13" && "${minor}" == "0" ]]; then
+      echo "nv-codec-headers ${major}.${minor} already present at ${dest}"
+      return 0
+    fi
+    echo "nv-codec-headers present but ${major:-?}.${minor:-?} (need 13.0); replacing..."
     rm -rf "${dest}"
   fi
+
+  echo "Cloning FFmpeg nv-codec-headers sdk/13.0 into packaging tree..."
+  mkdir -p "$(dirname "${dest}")"
   git clone --depth 1 --branch sdk/13.0 \
     https://github.com/FFmpeg/nv-codec-headers.git "${dest}"
   # Drop VCS metadata from the injected clone (not needed in the RPM tarball).
@@ -160,6 +164,44 @@ function ensure_nv_codec_headers() {
     echo "ERROR: failed to populate nv-codec-headers at ${hdr}" >&2
     exit 1
   fi
+}
+
+# cmake/dependencies/ffmpeg.cmake resolves the prebuilt FFmpeg URL from the
+# build-deps git tag. RPM tarballs exclude build-deps/.git, so without this stamp
+# CMake used to fall back to "latest" (which can ship NVENC 13.1 and break the build).
+function write_build_deps_ffmpeg_tag_stamp() {
+  local stamp="${source_root}/packaging/linux/.sunshine-ffmpeg-tag"
+  local bd="${source_root}/third-party/build-deps"
+  local tag=""
+
+  mkdir -p "$(dirname "${stamp}")"
+
+  if [[ -d "${bd}/.git" || -f "${bd}/.git" ]]; then
+    tag="$(git -C "${bd}" describe --tags --exact-match 2>/dev/null || true)"
+    if [[ -z "${tag}" ]]; then
+      tag="$(git -C "${bd}" describe --tags --abbrev=0 2>/dev/null || true)"
+    fi
+  fi
+
+  if [[ -z "${tag}" ]]; then
+    # Resolve the gitlink SHA recorded in Sunshine, then find a matching release tag
+    # via the network only when the local submodule checkout is unavailable.
+    local sha
+    sha="$(git -C "${source_root}" rev-parse HEAD:third-party/build-deps 2>/dev/null || true)"
+    if [[ -n "${sha}" ]]; then
+      tag="$(git ls-remote --tags https://github.com/LizardByte/build-deps.git \
+        | awk -v s="${sha}" '$1 == s { gsub(/^.*\//, "", $2); gsub(/\^\{\}$/, "", $2); print $2; exit }')"
+    fi
+  fi
+
+  if [[ -z "${tag}" ]]; then
+    echo "ERROR: could not resolve build-deps FFmpeg release tag for packaging stamp." >&2
+    echo "Initialize third-party/build-deps or ensure network access to LizardByte/build-deps tags." >&2
+    exit 1
+  fi
+
+  printf '%s\n' "${tag}" > "${stamp}"
+  echo "Wrote FFmpeg packaging stamp: ${stamp} (${tag})"
 }
 
 # .copr-ci excludes the whole build-deps tree. Replace that blanket exclude with
@@ -226,6 +268,7 @@ function refine_build_deps_excludes() {
   _out+=("third-party/build-deps/third-party/FFmpeg/nv-codec-headers/.git")
 }
 
+write_build_deps_ffmpeg_tag_stamp
 ensure_nv_codec_headers
 refine_build_deps_excludes excluded_paths
 
