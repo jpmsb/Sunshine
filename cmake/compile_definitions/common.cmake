@@ -62,6 +62,9 @@ endif()
 # NVENC headers live under build-deps (see LizardByte/Sunshine#5449). RPM/OBS/COPR
 # packaging excludes the full build-deps submodule; prepare_rpm_source.sh re-injects
 # only nv-codec-headers so this path still exists in those tarballs.
+#
+# include_directories(BEFORE ...) is applied later (after FFMPEG_INCLUDE_DIRS) so the
+# pinned sdk/13.0 headers win over ffnvcodec copies bundled inside the FFmpeg tarball.
 set(NV_CODEC_HEADERS_DIR
         "${CMAKE_SOURCE_DIR}/third-party/build-deps/third-party/FFmpeg/nv-codec-headers/include")
 if(NOT EXISTS "${NV_CODEC_HEADERS_DIR}/ffnvcodec/nvEncodeAPI.h")
@@ -71,7 +74,6 @@ if(NOT EXISTS "${NV_CODEC_HEADERS_DIR}/ffnvcodec/nvEncodeAPI.h")
             "Initialize third-party/build-deps, or run scripts/prepare_rpm_source.sh "
             "(which clones FFmpeg nv-codec-headers sdk/13.0 for packaging).")
 endif()
-include_directories(BEFORE SYSTEM "${NV_CODEC_HEADERS_DIR}")
 file(GLOB NVENC_SOURCES CONFIGURE_DEPENDS "src/nvenc/*.cpp" "src/nvenc/*.h")
 list(APPEND PLATFORM_TARGET_FILES ${NVENC_SOURCES})
 
@@ -168,6 +170,10 @@ include_directories(
         ${FFMPEG_INCLUDE_DIRS}
         ${Boost_INCLUDE_DIRS}  # has to be the last, or we get runtime error on macOS ffmpeg encoder
 )
+
+# Must come after FFMPEG_INCLUDE_DIRS: another BEFORE SYSTEM would otherwise push
+# the FFmpeg-bundled ffnvcodec headers ahead of the pinned NVENC SDK headers.
+include_directories(BEFORE SYSTEM "${NV_CODEC_HEADERS_DIR}")
 
 list(APPEND SUNSHINE_EXTERNAL_LIBRARIES
         ${MINIUPNP_LIBRARIES}
