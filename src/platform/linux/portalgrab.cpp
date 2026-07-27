@@ -1165,6 +1165,13 @@ namespace portal {
       if (screencast_bootstrap_stop.load()) {
         return;
       }
+      // xdg-desktop-portal denies CreateSession when the caller is non-dumpable or still
+      // holds elevated capabilities ("Unable to open /proc/<pid>/root"). Capture mode
+      // "screencast" never enables KMS, so dropping CAP_SYS_ADMIN/SYS_NICE here is safe
+      // (same sequence as make_portal_display()).
+      if (platf::has_elevated_privileges(true)) {
+        platf::drop_elevated_privileges(true);
+      }
       // Reuse an existing live session (e.g. persist restore already done).
       if (has_screencast_live_session()) {
         BOOST_LOG(info) << "[portalgrab] Screencast live session already present; skipping bootstrap picker"sv;
@@ -1202,6 +1209,10 @@ namespace portal {
     }
     std::thread([]() {
       BOOST_LOG(info) << "[portalgrab] Starting shadow screencast source reselect"sv;
+      // Same portal /proc/<pid>/root requirement as bootstrap (see screencast_bootstrap_start).
+      if (platf::has_elevated_privileges(true)) {
+        platf::drop_elevated_privileges(true);
+      }
       auto dbus = run_screencast_portal_picker(true);
       if (!dbus) {
         screencast_reselect_running.store(false);
