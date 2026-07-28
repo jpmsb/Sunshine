@@ -1371,15 +1371,24 @@ namespace platf {
   std::unique_ptr<high_precision_timer> create_high_precision_timer();
 
   /**
-   * @brief Check is the current process is running with elevated privileges (e.g. system admin/etc.)
-   * @param all_caps Bool that specifies whether to check all caps or only CAP_SYS_ADMIN
-   * @return True if capabilities specified to be checked are present.
+   * @brief Check whether the process holds elevated Linux capabilities.
+   *
+   * On Linux, inspects effective, permitted, inheritable, and ambient sets for
+   * `CAP_SYS_ADMIN` and optionally `CAP_SYS_NICE`. Other platforms always return false.
+   *
+   * @param all_caps When true, check both `CAP_SYS_ADMIN` and `CAP_SYS_NICE`; otherwise only `CAP_SYS_ADMIN`.
+   * @return True when any of the requested capabilities is still present.
    */
   bool has_elevated_privileges(bool all_caps);
 
   /**
-   * @brief Drop elevated privileges (e.g. system admin/nice etc.)
-   * @param all_caps Bool that specifies whether to drop all caps or only CAP_SYS_ADMIN
+   * @brief Drop elevated Linux capabilities and restore dumpable for portal access.
+   *
+   * Clears the requested capabilities from ambient, inheritable, effective, and
+   * permitted sets, then sets `PR_SET_DUMPABLE` to 1 so xdg-desktop-portal can open
+   * `/proc/<pid>/root`. Mutations are serialized with the Linux capability mutex.
+   *
+   * @param all_caps When true, drop both `CAP_SYS_ADMIN` and `CAP_SYS_NICE`; otherwise only `CAP_SYS_ADMIN`.
    */
   void drop_elevated_privileges(bool all_caps);
 
