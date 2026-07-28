@@ -7,6 +7,7 @@
 // standard includes
 #include <fcntl.h>
 #include <filesystem>
+#include <mutex>
 #include <unistd.h>
 #include <vector>
 
@@ -67,4 +68,15 @@ namespace platf {
    * @return A file descriptor on success, or `-1` if `open()` itself fails.
    */
   int open_drm_card_fd(const std::filesystem::path &path, int flags = O_RDWR);
+
+  /**
+   * @brief Process-wide mutex serializing Linux capability get/set operations.
+   *
+   * Callers that use `cap_get_proc` / `cap_set_proc` (or ambient helpers) must hold
+   * this lock for the full get-modify-set sequence so a stale capability snapshot
+   * cannot restore privileges dropped for xdg-desktop-portal access.
+   *
+   * @return Reference to the shared capability mutex.
+   */
+  std::mutex &capability_mutex();
 }  // namespace platf
