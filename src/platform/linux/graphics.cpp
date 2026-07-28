@@ -4,9 +4,11 @@
  */
 // standard includes
 #include <fcntl.h>
+#include <mutex>
 
 // local includes
 #include "graphics.h"
+#include "misc.h"
 #include "src/assets_path.h"
 #include "src/file_handler.h"
 #include "src/logging.h"
@@ -419,14 +421,21 @@ namespace egl {
   std::optional<ctx_t> make_ctx(display_t::pointer display) {
     bool nice_warning = false;
 #if !defined(__FreeBSD__)
-    cap_t caps = cap_get_proc();
-
-    cap_value_t sys_nice = CAP_SYS_NICE;
-    if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &sys_nice, CAP_SET) || cap_set_proc(caps)) {
-      BOOST_LOG(debug) << "Failed to gain CAP_SYS_NICE"sv;
-      nice_warning = true;
+    {
+      std::lock_guard lock(platf::capability_mutex());
+      cap_t caps = cap_get_proc();
+      if (!caps) {
+        BOOST_LOG(debug) << "Failed to get capabilities for CAP_SYS_NICE"sv;
+        nice_warning = true;
+      } else {
+        cap_value_t sys_nice = CAP_SYS_NICE;
+        if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &sys_nice, CAP_SET) || cap_set_proc(caps)) {
+          BOOST_LOG(debug) << "Failed to gain CAP_SYS_NICE"sv;
+          nice_warning = true;
+        }
+        cap_free(caps);
+      }
     }
-    cap_free(caps);
 #endif
 
     constexpr int conf_attr[] {
@@ -518,11 +527,17 @@ namespace egl {
     gl::ctx.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
 #if !defined(__FreeBSD__)
-    caps = cap_get_proc();
-    if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &sys_nice, CAP_CLEAR) || cap_set_proc(caps)) {
-      BOOST_LOG(debug) << "Failed to drop CAP_SYS_NICE"sv;
+    {
+      std::lock_guard lock(platf::capability_mutex());
+      cap_t caps = cap_get_proc();
+      if (caps) {
+        cap_value_t sys_nice = CAP_SYS_NICE;
+        if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &sys_nice, CAP_CLEAR) || cap_set_proc(caps)) {
+          BOOST_LOG(debug) << "Failed to drop CAP_SYS_NICE"sv;
+        }
+        cap_free(caps);
+      }
     }
-    cap_free(caps);
 #endif
 
     return ctx;
