@@ -59,22 +59,53 @@ elseif(UNIX)
     endif()
 endif()
 
-# NVENC headers live under build-deps (see LizardByte/Sunshine#5449). RPM/OBS/COPR
-# packaging excludes the full build-deps submodule; prepare_rpm_source.sh re-injects
-# only nv-codec-headers so this path still exists in those tarballs.
-#
-# include_directories(BEFORE ...) is applied later (after FFMPEG_INCLUDE_DIRS) so the
-# pinned sdk/13.0 headers win over ffnvcodec copies bundled inside the FFmpeg tarball.
-set(NV_CODEC_HEADERS_DIR
-        "${CMAKE_SOURCE_DIR}/third-party/build-deps/third-party/FFmpeg/nv-codec-headers/include")
-if(NOT EXISTS "${NV_CODEC_HEADERS_DIR}/ffnvcodec/nvEncodeAPI.h")
-    message(FATAL_ERROR
-            "nv-codec-headers not found at:\n"
-            "  ${NV_CODEC_HEADERS_DIR}\n"
-            "Initialize third-party/build-deps, or run scripts/prepare_rpm_source.sh "
-            "(which clones FFmpeg nv-codec-headers sdk/13.0 for packaging).")
+set(NVENC_PUBLIC_SOURCES
+        "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_config.h"
+        "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_d3d11_interface.h"
+        "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_dynamic_factory.cpp"
+        "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_dynamic_factory.h"
+        "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_dynamic_factory_versions.h"
+        "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_encoded_frame.h"
+        "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_encoder.h"
+        "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_shared_dll.h"
+        "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_version.h"
+)
+set(NVENC_SOURCES ${NVENC_PUBLIC_SOURCES})
+
+if(WIN32)
+    set(NVENC_IMPLEMENTATION_SOURCES
+            "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_base.cpp"
+            "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_d3d11.cpp"
+            "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_d3d11_native.cpp"
+            "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_d3d11_on_cuda.cpp"
+            "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_dynamic_factory_impl.cpp"
+            "${CMAKE_SOURCE_DIR}/src/nvenc/nvenc_utils.cpp"
+    )
+
+    # Add a version-isolated NVENC implementation object library.
+    # add_nvenc_sdk_implementation: args = `target_name`, `sdk_version`, `sdk_include_dir`
+    function(add_nvenc_sdk_implementation target_name sdk_version sdk_include_dir)
+        add_library(${target_name} OBJECT ${NVENC_IMPLEMENTATION_SOURCES})
+        target_include_directories(${target_name} BEFORE PRIVATE "${sdk_include_dir}")
+        target_compile_definitions(${target_name} PRIVATE
+                NVENC_FACTORY_SUFFIX=${sdk_version}
+                NVENC_NAMESPACE=nvenc_${sdk_version}
+                NVENC_SDK_VERSION=${sdk_version}
+        )
+        target_compile_options(${target_name} PRIVATE ${SUNSHINE_COMPILE_OPTIONS})
+    endfunction()
+
+    add_nvenc_sdk_implementation(nvenc_sdk_1100 1100 "${NV_CODEC_HEADERS_11_INCLUDE_DIR}")
+    add_nvenc_sdk_implementation(nvenc_sdk_1200 1200 "${NV_CODEC_HEADERS_12_INCLUDE_DIR}")
+    add_nvenc_sdk_implementation(nvenc_sdk_1300 1300 "${NV_CODEC_HEADERS_13_INCLUDE_DIR}")
+
+    list(APPEND NVENC_SOURCES
+            $<TARGET_OBJECTS:nvenc_sdk_1100>
+            $<TARGET_OBJECTS:nvenc_sdk_1200>
+            $<TARGET_OBJECTS:nvenc_sdk_1300>
+    )
 endif()
-file(GLOB NVENC_SOURCES CONFIGURE_DEPENDS "src/nvenc/*.cpp" "src/nvenc/*.h")
+
 list(APPEND PLATFORM_TARGET_FILES ${NVENC_SOURCES})
 
 set(SUNSHINE_TARGET_FILES
@@ -171,9 +202,9 @@ include_directories(
         ${Boost_INCLUDE_DIRS}  # has to be the last, or we get runtime error on macOS ffmpeg encoder
 )
 
-# Must come after FFMPEG_INCLUDE_DIRS: another BEFORE SYSTEM would otherwise push
-# the FFmpeg-bundled ffnvcodec headers ahead of the pinned NVENC SDK headers.
-include_directories(BEFORE SYSTEM "${NV_CODEC_HEADERS_DIR}")
+if(WIN32)
+    include_directories(BEFORE SYSTEM "${NV_CODEC_HEADERS_13_INCLUDE_DIR}")
+endif()
 
 list(APPEND SUNSHINE_EXTERNAL_LIBRARIES
         ${MINIUPNP_LIBRARIES}
