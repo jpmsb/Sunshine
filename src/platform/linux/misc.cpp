@@ -18,6 +18,8 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
+#include <span>
 #include <sstream>
 
 // platform includes
@@ -1550,6 +1552,10 @@ namespace platf {
     // Screencast is opt-in only; never auto-selected when capture is empty.
     if (config::video.capture == "screencast" && verify_screencast()) {
       sources[source::SCREENCAST] = true;
+      // Drop file capabilities synchronously before the bootstrap thread opens the
+      // portal. RPM packages ship setcap; xdg-desktop-portal denies CreateSession
+      // while CAP_SYS_ADMIN/SYS_NICE remain or the process is non-dumpable.
+      drop_elevated_privileges(true);
       ::portal::screencast_bootstrap_start();
     }
 #endif
@@ -1651,55 +1657,103 @@ namespace platf {
     return detected.empty() ? "/dev/dri/renderD128" : detected;
   }
 
+  std::mutex &capability_mutex() {
+    static std::mutex mutex;
+    return mutex;
+  }
+
 #if !defined(__FreeBSD__)
   static constexpr cap_value_t FULL_CAPS[] = {CAP_SYS_ADMIN, CAP_SYS_NICE};
   static constexpr cap_value_t ADMIN_CAPS[] = {CAP_SYS_ADMIN};
 
-  constexpr std::span<const cap_value_t> ELEVATED_PRIVILEGES_FULL {FULL_CAPS};  ///< Protocol or platform constant for elevated privileges full.
-  constexpr std::span<const cap_value_t> ELEVATED_PRIVILEGES_ADMIN {ADMIN_CAPS};  ///< Protocol or platform constant for elevated privileges admin.
-#endif
+  constexpr std::span<const cap_value_t> ELEVATED_PRIVILEGES_FULL {FULL_CAPS};  ///< Caps dropped for portal-safe capture.
+  constexpr std::span<const cap_value_t> ELEVATED_PRIVILEGES_ADMIN {ADMIN_CAPS};  ///< Caps dropped after KMS probing.
 
-  bool has_elevated_privileges(bool all_caps) {
-#if !defined(__FreeBSD__)
+  /**
+   * @brief Test whether any capability in @p caps_to_check is set in @p flag.
+   *
+   * @param caps Capability state from `cap_get_proc`.
+   * @param caps_to_check Capabilities to inspect.
+   * @param flag Capability set flag to read.
+   * @return True when at least one capability is set.
+   */
+  bool capability_flag_set(cap_t caps, std::span<const cap_value_t> caps_to_check, cap_flag_t flag) {
+    for (const auto c : caps_to_check) {
+      cap_flag_value_t value = CAP_CLEAR;
+      if (cap_get_flag(caps, c, flag, &value) == 0 && value == CAP_SET) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * @brief Test whether any capability in @p caps_to_check is present without locking.
+   *
+   * @param all_caps When true, check both `CAP_SYS_ADMIN` and `CAP_SYS_NICE`.
+   * @return True when any requested capability remains.
+   */
+  bool has_elevated_privileges_unlocked(bool all_caps) {
     const auto caps_to_check = all_caps ? ELEVATED_PRIVILEGES_FULL : ELEVATED_PRIVILEGES_ADMIN;
     const cap_t caps = cap_get_proc();
     if (!caps) {
       BOOST_LOG(error) << "[misc] has_elevated_privileges failed to get process capabilities."sv;
       return false;
     }
-    for (const auto c : caps_to_check) {
-      cap_flag_value_t cap_flags_value;
-      cap_get_flag(caps, c, CAP_EFFECTIVE, &cap_flags_value);
-      if (cap_flags_value == CAP_SET) {
-        BOOST_LOG(debug) << "[misc] has_elevated_privileges found effective cap:"sv << c;
-        return true;
-      }
-    }
-    for (const auto c : caps_to_check) {
-      cap_flag_value_t cap_flags_value;
-      cap_get_flag(caps, c, CAP_PERMITTED, &cap_flags_value);
-      if (cap_flags_value == CAP_SET) {
-        BOOST_LOG(debug) << "[misc] has_elevated_privileges found permitted cap:"sv << c;
-        return true;
-      }
-    }
+
+    bool found = capability_flag_set(caps, caps_to_check, CAP_EFFECTIVE) ||
+                 capability_flag_set(caps, caps_to_check, CAP_PERMITTED) ||
+                 capability_flag_set(caps, caps_to_check, CAP_INHERITABLE);
     cap_free(caps);
-#endif
-    return false;
+
+    if (!found) {
+      for (const auto c : caps_to_check) {
+        if (cap_get_ambient(c) == 1) {
+          found = true;
+          break;
+        }
+      }
+    }
+
+    if (found) {
+      BOOST_LOG(debug) << "[misc] has_elevated_privileges found elevated capability"sv;
+    }
+    return found;
   }
 
-  void drop_elevated_privileges(bool all_caps) {
-#if !defined(__FreeBSD__)
+  /**
+   * @brief Drop elevated capabilities without locking.
+   *
+   * Clears ambient first, then inheritable/effective/permitted, sets dumpable, and
+   * verifies the requested capabilities are gone.
+   *
+   * @param all_caps When true, drop both `CAP_SYS_ADMIN` and `CAP_SYS_NICE`.
+   */
+  void drop_elevated_privileges_unlocked(bool all_caps) {
     bool failed = false;
     const auto caps_to_drop = all_caps ? ELEVATED_PRIVILEGES_FULL : ELEVATED_PRIVILEGES_ADMIN;
+
+    // Ambient must be cleared before permitted/inheritable bits are removed.
+    for (const auto c : caps_to_drop) {
+      if (cap_get_ambient(c) == 1 && cap_set_ambient(c, CAP_CLEAR) != 0) {
+        BOOST_LOG(error) << "[misc] drop_elevated_privileges failed to clear ambient cap "sv << c << ": "sv << std::strerror(errno);
+        failed = true;
+      }
+    }
+
     const cap_t caps = cap_get_proc();
     if (!caps) {
       BOOST_LOG(error) << "[misc] drop_elevated_privileges failed to get process capabilities"sv;
       return;
     }
 
-    cap_set_flag(caps, CAP_EFFECTIVE, caps_to_drop.size(), caps_to_drop.data(), CAP_CLEAR);
-    cap_set_flag(caps, CAP_PERMITTED, caps_to_drop.size(), caps_to_drop.data(), CAP_CLEAR);
+    const auto count = static_cast<int>(caps_to_drop.size());
+    if (cap_set_flag(caps, CAP_INHERITABLE, count, caps_to_drop.data(), CAP_CLEAR) != 0 ||
+        cap_set_flag(caps, CAP_EFFECTIVE, count, caps_to_drop.data(), CAP_CLEAR) != 0 ||
+        cap_set_flag(caps, CAP_PERMITTED, count, caps_to_drop.data(), CAP_CLEAR) != 0) {
+      BOOST_LOG(error) << "[misc] drop_elevated_privileges failed to update capability flags: "sv << std::strerror(errno);
+      failed = true;
+    }
 
     if (cap_set_proc(caps) != 0) {
       BOOST_LOG(error) << "[misc] drop_elevated_privileges failed to prune capabilities: "sv << std::strerror(errno);
@@ -1712,9 +1766,39 @@ namespace platf {
       BOOST_LOG(error) << "[misc] drop_elevated_privileges failed to set PR_SET_DUMPABLE: "sv << std::strerror(errno);
       failed = true;
     }
+
+    if (has_elevated_privileges_unlocked(all_caps)) {
+      BOOST_LOG(error) << "[misc] drop_elevated_privileges left elevated capabilities after prune"sv;
+      failed = true;
+    }
+
+    if (prctl(PR_GET_DUMPABLE) != 1) {
+      BOOST_LOG(error) << "[misc] drop_elevated_privileges left process non-dumpable"sv;
+      failed = true;
+    }
+
     if (!failed) {
       BOOST_LOG(info) << "[misc] drop_elevated_privileges succeeded in dropping capabilities"sv;
     }
+  }
+#endif
+
+  bool has_elevated_privileges(bool all_caps) {
+#if !defined(__FreeBSD__)
+    std::lock_guard lock(capability_mutex());
+    return has_elevated_privileges_unlocked(all_caps);
+#else
+    (void) all_caps;
+    return false;
+#endif
+  }
+
+  void drop_elevated_privileges(bool all_caps) {
+#if !defined(__FreeBSD__)
+    std::lock_guard lock(capability_mutex());
+    drop_elevated_privileges_unlocked(all_caps);
+#else
+    (void) all_caps;
 #endif
   }
 }  // namespace platf
