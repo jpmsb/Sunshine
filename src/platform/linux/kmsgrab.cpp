@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <filesystem>
+#include <mutex>
 #include <ranges>
 #include <thread>
 #include <unistd.h>
@@ -21,6 +22,7 @@
 // local includes
 #include "cuda.h"
 #include "graphics.h"
+#include "misc.h"
 #include "src/config.h"
 #include "src/logging.h"
 #include "src/platform/common.h"
@@ -43,24 +45,44 @@ namespace platf {
      */
     class cap_sys_admin {
     public:
+      /**
+       * @brief Raise `CAP_SYS_ADMIN` in the effective set for DRM master operations.
+       */
       cap_sys_admin() {
-        caps = cap_get_proc();
+        std::lock_guard lock(platf::capability_mutex());
+        cap_t caps = cap_get_proc();
+        if (!caps) {
+          BOOST_LOG(error) << "Failed to get capabilities for CAP_SYS_ADMIN";
+          return;
+        }
 
         cap_value_t sys_admin = CAP_SYS_ADMIN;
         if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &sys_admin, CAP_SET) || cap_set_proc(caps)) {
           BOOST_LOG(error) << "Failed to gain CAP_SYS_ADMIN";
         }
+        cap_free(caps);
       }
 
+      /**
+       * @brief Clear `CAP_SYS_ADMIN` from the current effective set.
+       *
+       * Re-reads process capabilities instead of replaying a constructor snapshot so a
+       * concurrent portal drop cannot be undone by a stale `cap_set_proc`.
+       */
       ~cap_sys_admin() {
+        std::lock_guard lock(platf::capability_mutex());
+        cap_t caps = cap_get_proc();
+        if (!caps) {
+          BOOST_LOG(error) << "Failed to get capabilities while dropping CAP_SYS_ADMIN";
+          return;
+        }
+
         cap_value_t sys_admin = CAP_SYS_ADMIN;
         if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &sys_admin, CAP_CLEAR) || cap_set_proc(caps)) {
           BOOST_LOG(error) << "Failed to drop CAP_SYS_ADMIN";
         }
         cap_free(caps);
       }
-
-      cap_t caps;  ///< Caps.
     };
 
     /**
