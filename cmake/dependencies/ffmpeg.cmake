@@ -191,3 +191,18 @@ else()
 endif()
 
 set(FFMPEG_INCLUDE_DIRS "${FFMPEG_PREPARED_BINARIES}/include")
+
+# Some architecture FFmpeg packages omit NVIDIA ffnvcodec headers (e.g. FreeBSD aarch64).
+# Non-Apple Unix still needs them for NVENC legacy AVOption constants in config.cpp.
+# Prefer the package headers when present; otherwise fall back to the build-deps submodule.
+if(NOT WIN32 AND NOT EXISTS "${FFMPEG_PREPARED_BINARIES}/include/ffnvcodec/nvEncodeAPI.h")
+    set(_FFMPEG_NV_CODEC_HEADERS_FALLBACK
+            "${CMAKE_SOURCE_DIR}/third-party/build-deps/third-party/FFmpeg/nv-codec-headers/include")
+    if(EXISTS "${_FFMPEG_NV_CODEC_HEADERS_FALLBACK}/ffnvcodec/nvEncodeAPI.h")
+        message(STATUS
+                "FFmpeg package has no ffnvcodec headers; using build-deps nv-codec-headers at "
+                "${_FFMPEG_NV_CODEC_HEADERS_FALLBACK}")
+        list(APPEND FFMPEG_INCLUDE_DIRS "${_FFMPEG_NV_CODEC_HEADERS_FALLBACK}")
+    endif()
+    unset(_FFMPEG_NV_CODEC_HEADERS_FALLBACK)
+endif()
