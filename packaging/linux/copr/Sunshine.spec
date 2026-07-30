@@ -35,7 +35,6 @@ BuildRequires: libcap-devel
 BuildRequires: libcurl-devel
 BuildRequires: libdrm-devel
 BuildRequires: libevdev-devel
-BuildRequires: libnotify-devel >= 0.8.0
 BuildRequires: libva-devel
 BuildRequires: libX11-devel
 BuildRequires: libxcb-devel
@@ -84,6 +83,7 @@ BuildRequires: systemd-udev
 BuildRequires: uv
 %{?sysusers_requires_compat}
 # for unit tests
+BuildRequires: ImageMagick
 BuildRequires: xorg-x11-server-Xvfb
 %endif
 
@@ -118,6 +118,7 @@ BuildRequires: udev
 BuildRequires: vulkan-devel
 %endif
 # for unit tests
+BuildRequires: ImageMagick
 BuildRequires: xvfb-run
 %endif
 
@@ -169,11 +170,11 @@ BuildRequires: qt6-svg-devel
 %global cuda_dir %{_builddir}/cuda
 
 # Common runtime requirements
+Requires: miniupnpc >= 2.2.4
 Requires: which >= 2.21
 
 %if 0%{?fedora}
 Requires: libnotify >= 0.8.0
-Requires: miniupnpc >= 2.2.4
 %endif
 
 %if 0%{?fedora}

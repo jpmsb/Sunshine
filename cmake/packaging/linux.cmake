@@ -175,9 +175,6 @@ set(CPACK_RPM_PACKAGE_AUTOREQ ON)
 install(FILES "${CMAKE_SOURCE_DIR}/sunshine.svg"
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps"
         RENAME "${PROJECT_FQDN}.svg")
-install(FILES "${CMAKE_SOURCE_DIR}/sunshine.svg"
-        DESTINATION "${SUNSHINE_ASSETS_DIR}/web/images"
-        RENAME "logo-sunshine.svg")
 
 # copy application logo into build assets for running without install (tray idle icon)
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/assets/web/images")
@@ -228,7 +225,7 @@ if(${SUNSHINE_TRAY} STREQUAL 1)
             )
         endif()
         list(APPEND CPACK_FREEBSD_PACKAGE_DEPS
-                x11-toolkits/qt6-widgets
+                devel/qt6-base
                 graphics/qt6-svg
         )
     else()

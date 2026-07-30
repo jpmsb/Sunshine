@@ -5,6 +5,27 @@
 // macros
 #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
 
+  /**
+   * @def TRAY_ICON
+   * @brief Path to the default system tray icon.
+   */
+  #define TRAY_ICON WEB_DIR "images/logo-sunshine.svg"
+  /**
+   * @def TRAY_ICON_PLAYING
+   * @brief Path to the system tray icon used while streaming.
+   */
+  #define TRAY_ICON_PLAYING WEB_DIR "images/sunshine-playing.svg"
+  /**
+   * @def TRAY_ICON_PAUSING
+   * @brief Path to the system tray icon used while streaming is paused.
+   */
+  #define TRAY_ICON_PAUSING WEB_DIR "images/sunshine-pausing.svg"
+  /**
+   * @def TRAY_ICON_LOCKED
+   * @brief Path to the system tray icon used for pairing requests.
+   */
+  #define TRAY_ICON_LOCKED WEB_DIR "images/sunshine-locked.svg"
+
   #if defined(_WIN32)
     #define WIN32_LEAN_AND_MEAN  ///< Exclude rarely-used Windows headers from winsock/windows includes.
     #include <accctrl.h>
@@ -691,6 +712,25 @@ namespace system_tray {
       }
     }
   }
+
+  #ifdef SUNSHINE_TESTS
+  const struct tray &tray_data_for_testing() {
+    return tray;
+  }
+
+  bool tray_initialized_for_testing() {
+    return tray_initialized;
+  }
+
+  void reset_tray_data_for_testing() {
+    tray.icon = tray.allIconPaths[0];
+    tray.tooltip = PROJECT_NAME;
+    tray.notification_icon = nullptr;
+    tray.notification_text = nullptr;
+    tray.notification_title = nullptr;
+    tray.notification_cb = nullptr;
+  }
+  #endif
 
   /**
    * @brief Get resource path.
