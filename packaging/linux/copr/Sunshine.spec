@@ -35,6 +35,7 @@ BuildRequires: libcap-devel
 BuildRequires: libcurl-devel
 BuildRequires: libdrm-devel
 BuildRequires: libevdev-devel
+BuildRequires: libnotify-devel >= 0.8.0
 BuildRequires: libva-devel
 BuildRequires: libX11-devel
 BuildRequires: libxcb-devel
