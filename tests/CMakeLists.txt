@@ -110,56 +110,71 @@ endif()
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS
         ${CMAKE_SOURCE_DIR}/tests/*.h
         ${CMAKE_SOURCE_DIR}/tests/*.cpp)
+
+# Upstream tray ships notification_utils for integration tests; the fork tray may not.
+set(SUNSHINE_TRAY_NOTIFICATION_UTILS
+        "${CMAKE_SOURCE_DIR}/third-party/tray/tests/notification_utils.cpp")
+set(SUNSHINE_TRAY_SCREENSHOT_UTILS
+        "${CMAKE_SOURCE_DIR}/third-party/tray/tests/screenshot_utils.cpp")
+set(SUNSHINE_TRAY_TEST_HELPERS_AVAILABLE OFF)
+
 if(SUNSHINE_ENABLE_TRAY AND (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
-    set(SUNSHINE_TRAY_TEST_ICON_SOURCE_DIR
-            "${CMAKE_SOURCE_DIR}/src_assets/common/assets/web/public/images")
-    set(SUNSHINE_TRAY_TEST_ICON_DESTINATION_DIR
-            "${CMAKE_CURRENT_BINARY_DIR}/test_assets/web/images")
-    file(MAKE_DIRECTORY "${SUNSHINE_TRAY_TEST_ICON_DESTINATION_DIR}")
+    if(EXISTS "${SUNSHINE_TRAY_NOTIFICATION_UTILS}" AND EXISTS "${SUNSHINE_TRAY_SCREENSHOT_UTILS}")
+        set(SUNSHINE_TRAY_TEST_HELPERS_AVAILABLE ON)
+        set(SUNSHINE_TRAY_TEST_ICON_SOURCE_DIR
+                "${CMAKE_SOURCE_DIR}/src_assets/common/assets/web/public/images")
+        set(SUNSHINE_TRAY_TEST_ICON_DESTINATION_DIR
+                "${CMAKE_CURRENT_BINARY_DIR}/test_assets/web/images")
+        file(MAKE_DIRECTORY "${SUNSHINE_TRAY_TEST_ICON_DESTINATION_DIR}")
 
-    configure_file(
-            "${CMAKE_SOURCE_DIR}/sunshine.svg"
-            "${SUNSHINE_TRAY_TEST_ICON_DESTINATION_DIR}/logo-sunshine.svg"
-            COPYONLY)
-
-    set(SUNSHINE_TRAY_TEST_ICONS
-            sunshine-locked.svg
-            sunshine-playing.svg
-            sunshine-pausing.svg)
-
-    foreach(icon IN LISTS SUNSHINE_TRAY_TEST_ICONS)
         configure_file(
-                "${SUNSHINE_TRAY_TEST_ICON_SOURCE_DIR}/${icon}"
-                "${SUNSHINE_TRAY_TEST_ICON_DESTINATION_DIR}/${icon}"
+                "${CMAKE_SOURCE_DIR}/sunshine.svg"
+                "${SUNSHINE_TRAY_TEST_ICON_DESTINATION_DIR}/logo-sunshine.svg"
                 COPYONLY)
-    endforeach()
 
-    add_library(sunshine_tray_test_helpers STATIC
-            ${CMAKE_SOURCE_DIR}/third-party/tray/tests/notification_utils.cpp
-            ${CMAKE_SOURCE_DIR}/third-party/tray/tests/screenshot_utils.cpp)
-    set_target_properties(sunshine_tray_test_helpers PROPERTIES
-            CXX_STANDARD 17
-            CXX_STANDARD_REQUIRED ON)
-    target_include_directories(sunshine_tray_test_helpers PRIVATE
-            ${CMAKE_SOURCE_DIR}/third-party/tray)
-    target_link_libraries(sunshine_tray_test_helpers PRIVATE
-            lizardbyte::common)
+        set(SUNSHINE_TRAY_TEST_ICONS
+                sunshine-locked.svg
+                sunshine-playing.svg
+                sunshine-pausing.svg)
 
-    if(WIN32)
+        foreach(icon IN LISTS SUNSHINE_TRAY_TEST_ICONS)
+            configure_file(
+                    "${SUNSHINE_TRAY_TEST_ICON_SOURCE_DIR}/${icon}"
+                    "${SUNSHINE_TRAY_TEST_ICON_DESTINATION_DIR}/${icon}"
+                    COPYONLY)
+        endforeach()
+
+        add_library(sunshine_tray_test_helpers STATIC
+                ${SUNSHINE_TRAY_NOTIFICATION_UTILS}
+                ${SUNSHINE_TRAY_SCREENSHOT_UTILS})
+        set_target_properties(sunshine_tray_test_helpers PROPERTIES
+                CXX_STANDARD 17
+                CXX_STANDARD_REQUIRED ON)
+        target_include_directories(sunshine_tray_test_helpers PRIVATE
+                ${CMAKE_SOURCE_DIR}/third-party/tray)
         target_link_libraries(sunshine_tray_test_helpers PRIVATE
-                gdi32
-                gdiplus)
-    else()
-        find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Gui)
-        find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui)
-        set(SUNSHINE_TRAY_TEST_QT_GUI_TARGET Qt${QT_VERSION_MAJOR}::Gui)
+                lizardbyte::common)
 
-        target_link_libraries(sunshine_tray_test_helpers PRIVATE
-                ${SUNSHINE_TRAY_TEST_QT_GUI_TARGET})
-        if(APPLE)
+        if(WIN32)
             target_link_libraries(sunshine_tray_test_helpers PRIVATE
-                    "-framework Cocoa")
+                    gdi32
+                    gdiplus)
+        else()
+            find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Gui)
+            find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui)
+            set(SUNSHINE_TRAY_TEST_QT_GUI_TARGET Qt${QT_VERSION_MAJOR}::Gui)
+
+            target_link_libraries(sunshine_tray_test_helpers PRIVATE
+                    ${SUNSHINE_TRAY_TEST_QT_GUI_TARGET})
+            if(APPLE)
+                target_link_libraries(sunshine_tray_test_helpers PRIVATE
+                        "-framework Cocoa")
+            endif()
         endif()
+    else()
+        message(STATUS
+                "Tray test helpers missing in third-party/tray; skipping system tray integration tests")
+        list(FILTER TEST_SOURCES EXCLUDE REGEX "test_system_tray\\.cpp$")
     endif()
 endif()
 # Add macOS-specific test files only when building tests for macOS
@@ -225,7 +240,7 @@ set(TEST_LINK_LIBRARIES
     ${PLATFORM_LIBRARIES}
 )
 
-if(SUNSHINE_ENABLE_TRAY AND (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
+if(SUNSHINE_TRAY_TEST_HELPERS_AVAILABLE)
     list(APPEND TEST_LINK_LIBRARIES
             sunshine_tray_test_helpers)
     if(SUNSHINE_TRAY_TEST_QT_GUI_TARGET)
