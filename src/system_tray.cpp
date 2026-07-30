@@ -5,27 +5,6 @@
 // macros
 #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
 
-  /**
-   * @def TRAY_ICON
-   * @brief Path to the default system tray icon.
-   */
-  #define TRAY_ICON WEB_DIR "images/logo-sunshine.svg"
-  /**
-   * @def TRAY_ICON_PLAYING
-   * @brief Path to the system tray icon used while streaming.
-   */
-  #define TRAY_ICON_PLAYING WEB_DIR "images/sunshine-playing.svg"
-  /**
-   * @def TRAY_ICON_PAUSING
-   * @brief Path to the system tray icon used while streaming is paused.
-   */
-  #define TRAY_ICON_PAUSING WEB_DIR "images/sunshine-pausing.svg"
-  /**
-   * @def TRAY_ICON_LOCKED
-   * @brief Path to the system tray icon used for pairing requests.
-   */
-  #define TRAY_ICON_LOCKED WEB_DIR "images/sunshine-locked.svg"
-
   #if defined(_WIN32)
     #define WIN32_LEAN_AND_MEAN  ///< Exclude rarely-used Windows headers from winsock/windows includes.
     #include <accctrl.h>
@@ -273,11 +252,31 @@ namespace system_tray {
     .allIconPaths = {nullptr, nullptr, nullptr, nullptr},
   };
 
-  #define TRAY_ICON tray_icon_default.c_str()  ///< Default/idle tray icon path.
-  #define TRAY_ICON_PLAYING tray_icon_playing.c_str()  ///< Streaming-active tray icon path.
-  #define TRAY_ICON_PAUSING tray_icon_pausing.c_str()  ///< Stream-pausing tray icon path.
-  #define TRAY_ICON_LOCKED tray_icon_locked.c_str()  ///< PIN-entry/locked tray icon path.
-  #define TRAY_ICON_DISCONNECTED tray_icon_disconnected.c_str()  ///< Disconnected tray icon path.
+  /**
+   * @def TRAY_ICON
+   * @brief Path to the default/idle system tray icon (set by configure_tray_icon_paths).
+   */
+  #define TRAY_ICON tray_icon_default.c_str()
+  /**
+   * @def TRAY_ICON_PLAYING
+   * @brief Path to the system tray icon used while streaming.
+   */
+  #define TRAY_ICON_PLAYING tray_icon_playing.c_str()
+  /**
+   * @def TRAY_ICON_PAUSING
+   * @brief Path to the system tray icon used while streaming is paused.
+   */
+  #define TRAY_ICON_PAUSING tray_icon_pausing.c_str()
+  /**
+   * @def TRAY_ICON_LOCKED
+   * @brief Path to the system tray icon used for pairing requests.
+   */
+  #define TRAY_ICON_LOCKED tray_icon_locked.c_str()
+  /**
+   * @def TRAY_ICON_DISCONNECTED
+   * @brief Path to the system tray icon used after a client disconnects.
+   */
+  #define TRAY_ICON_DISCONNECTED tray_icon_disconnected.c_str()
 
   /**
    * @brief Clear notification fields so tray_update does not re-show stale notifications.
