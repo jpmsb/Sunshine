@@ -39,6 +39,7 @@ depends=(
   'libdrm'
   'libevdev'
   'libmfx'
+  'libnotify'
   'libpipewire'
   'libpulse'
   'libva'
