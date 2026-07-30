@@ -9,7 +9,8 @@
 : "${_commit:=@GITHUB_COMMIT@}"
 
 pkgname='sunshine'
-pkgver=@PROJECT_VERSION@@SUNSHINE_SUB_VERSION@
+# pkgver must not contain hyphens; PROJECT_VERSION includes "-jpmsb" for display only.
+pkgver=@CMAKE_PROJECT_VERSION@@SUNSHINE_SUB_VERSION@
 pkgrel=1
 pkgdesc="@PROJECT_DESCRIPTION@"
 arch=('x86_64' 'aarch64')
