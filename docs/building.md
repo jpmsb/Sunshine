@@ -27,6 +27,7 @@ pkg install -y \
   devel/evdev-proto \
   devel/git \
   devel/libevdev \
+  devel/libnotify \
   devel/llvm19 \
   devel/ninja \
   devel/pkgconf \
