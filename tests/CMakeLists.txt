@@ -171,11 +171,15 @@ if(SUNSHINE_ENABLE_TRAY AND (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux
                         "-framework Cocoa")
             endif()
         endif()
-    else()
-        message(STATUS
-                "Tray test helpers missing in third-party/tray; skipping system tray integration tests")
-        list(FILTER TEST_SOURCES EXCLUDE REGEX "test_system_tray\\.cpp$")
     endif()
+endif()
+
+# Skip tray integration tests on every OS when helpers are unavailable (e.g. FreeBSD,
+# or Linux/macOS/Windows when notification_utils is missing from the tray submodule).
+if(NOT SUNSHINE_TRAY_TEST_HELPERS_AVAILABLE)
+    message(STATUS
+            "Tray test helpers unavailable; skipping system tray integration tests")
+    list(FILTER TEST_SOURCES EXCLUDE REGEX "test_system_tray\\.cpp$")
 endif()
 # Add macOS-specific test files only when building tests for macOS
 if (APPLE)
