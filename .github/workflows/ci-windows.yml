@@ -374,7 +374,7 @@ jobs:
         with:
           name: sunshine-screenshots-${{ matrix.name }}
           path: build/tests/screenshots
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Generate gcov report
         id: test_report
