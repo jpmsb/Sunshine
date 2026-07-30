@@ -16,23 +16,21 @@ if(DEFINED ENV{TAG})
     set(GITHUB_TAG $ENV{TAG})
 endif()
 
-# Check if env vars are defined before attempting to access them, variables will be defined even if blank
-if((DEFINED ENV{BRANCH}) AND (DEFINED ENV{BUILD_VERSION}))  # cmake-lint: disable=W0106
-    if((DEFINED ENV{BRANCH}) AND (NOT $ENV{BUILD_VERSION} STREQUAL ""))
-        # If BRANCH is defined and BUILD_VERSION is not empty, then we are building from CI
-        # If BRANCH is master we are building a push/release build
-        MESSAGE("Got from CI '$ENV{BRANCH}' branch and version '$ENV{BUILD_VERSION}'")
-        set(PROJECT_VERSION $ENV{BUILD_VERSION})
-        string(REGEX REPLACE "^v" "" PROJECT_VERSION ${PROJECT_VERSION})  # remove the v prefix if it exists
-        set(CMAKE_PROJECT_VERSION ${PROJECT_VERSION})  # cpack will use this to set the binary versions
-    endif()
-else()
-    # Local builds use AAAAMMDDHHmmss-jpmsb-local based on the configure timestamp.
-    string(TIMESTAMP BUILD_TIMESTAMP "%Y%m%d%H%M%S")
-    set(PROJECT_VERSION "${BUILD_TIMESTAMP}-jpmsb-local")
-    set(CMAKE_PROJECT_VERSION ${PROJECT_VERSION})
+# Fork version stamp: YYYY.MMDD.HHMMSS-jpmsb (configure timestamp).
+# Used for local and CI builds so this fork always exposes a consistent CalVer.
+string(TIMESTAMP PROJECT_VERSION_YEAR "%Y")
+string(TIMESTAMP PROJECT_VERSION_MONTH_DAY "%m%d")
+string(TIMESTAMP PROJECT_VERSION_HMS "%H%M%S")
+set(PROJECT_VERSION_CORE
+        "${PROJECT_VERSION_YEAR}.${PROJECT_VERSION_MONTH_DAY}.${PROJECT_VERSION_HMS}")
+set(PROJECT_VERSION "${PROJECT_VERSION_CORE}-jpmsb")
+# CPack/numeric fields omit the fork suffix (hyphens break some package version schemas).
+set(CMAKE_PROJECT_VERSION ${PROJECT_VERSION_CORE})
 
-    MESSAGE("Sunshine local build version: ${PROJECT_VERSION}")
+if((DEFINED ENV{BRANCH}) AND (DEFINED ENV{BUILD_VERSION}) AND (NOT "$ENV{BUILD_VERSION}" STREQUAL ""))  # cmake-lint: disable=W0106
+    message("CI branch '$ENV{BRANCH}' provided BUILD_VERSION='$ENV{BUILD_VERSION}'; using fork stamp ${PROJECT_VERSION}")
+else()
+    message("Sunshine build version: ${PROJECT_VERSION}")
 endif()
 
 # set date variables
@@ -40,9 +38,9 @@ set(PROJECT_YEAR "1990")
 set(PROJECT_MONTH "01")
 set(PROJECT_DAY "01")
 
-# Extract year, month, and day (do this AFTER version parsing)
+# Extract year, month, and day from the numeric core (YYYY.MMDD.HHMMSS)
 # Note: Cmake doesn't support "{}" regex syntax
-if(PROJECT_VERSION MATCHES "^([0-9][0-9][0-9][0-9])\\.([0-9][0-9][0-9][0-9]?)\\.([0-9]+)$")
+if(PROJECT_VERSION_CORE MATCHES "^([0-9][0-9][0-9][0-9])\\.([0-9][0-9][0-9][0-9]?)\\.([0-9]+)$")
     message("Extracting year and month/day from PROJECT_VERSION: ${PROJECT_VERSION}")
     # First capture group is the year
     set(PROJECT_YEAR "${CMAKE_MATCH_1}")
@@ -72,28 +70,8 @@ if(PROJECT_VERSION MATCHES "^([0-9][0-9][0-9][0-9])\\.([0-9][0-9][0-9][0-9]?)\\.
     endif()
 endif()
 
-# jpmsb timestamp format: AAAAMMDDHHmmss-jpmsb-local
-set(VERSION_STAMP "${PROJECT_VERSION}")
-string(REGEX REPLACE "-local$" "" VERSION_STAMP "${VERSION_STAMP}")
-
-if(VERSION_STAMP MATCHES "^([0-9][0-9][0-9][0-9])([0-9][0-9])([0-9][0-9])([0-9][0-9])([0-9][0-9])([0-9][0-9])-jpmsb$")
-    message("Extracting components from jpmsb PROJECT_VERSION: ${PROJECT_VERSION}")
-    set(PROJECT_YEAR "${CMAKE_MATCH_1}")
-    set(PROJECT_MONTH "${CMAKE_MATCH_2}")
-    set(PROJECT_DAY "${CMAKE_MATCH_3}")
-    set(PROJECT_VERSION_MAJOR "${CMAKE_MATCH_1}")
-    set(CMAKE_PROJECT_VERSION_MAJOR "${CMAKE_MATCH_1}")
-    set(PROJECT_VERSION_MINOR "${CMAKE_MATCH_2}${CMAKE_MATCH_3}")
-    set(CMAKE_PROJECT_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
-    math(EXPR VERSION_HH "${CMAKE_MATCH_4}")
-    math(EXPR VERSION_MM "${CMAKE_MATCH_5}")
-    math(EXPR VERSION_SS "${CMAKE_MATCH_6}")
-    math(EXPR PROJECT_VERSION_PATCH "${VERSION_HH} * 10000 + ${VERSION_MM} * 100 + ${VERSION_SS}")
-    set(CMAKE_PROJECT_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
-endif()
-
-# Parse PROJECT_VERSION to extract major, minor, and patch components
-if(PROJECT_VERSION MATCHES "([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+# Parse PROJECT_VERSION_CORE to extract major, minor, and patch components
+if(PROJECT_VERSION_CORE MATCHES "([0-9]+)\\.([0-9]+)\\.([0-9]+)")
     set(PROJECT_VERSION_MAJOR "${CMAKE_MATCH_1}")
     set(CMAKE_PROJECT_VERSION_MAJOR "${CMAKE_MATCH_1}")
 
