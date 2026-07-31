@@ -171,15 +171,35 @@ jobs:
           fi
 
           # build DMG and sign everything (see cmake/packaging/macos.cmake)
-          # cpack can rarely fail with "hdiutil: create failed - Resource busy"
-          # so let's allow 1 retry
-          if ! cpack -G DragNDrop --config build/CPackConfig.cmake; then
-            echo "cpack failed, retrying once with verbose..."
-            if ! cpack -G DragNDrop --config build/CPackConfig.cmake --verbose; then
-              echo "cpack failed again. Aborting."
+          # cpack can fail with "hdiutil detach ... Resource busy", leaving /Volumes/Sunshine mounted.
+          # force-detach before each retry so subsequent attempts can succeed.
+          cleanup_dmg_mount() {
+            if mount | grep -q ' on /Volumes/Sunshine '; then
+              echo "Cleaning up stale /Volumes/Sunshine mount..."
+              hdiutil detach "/Volumes/Sunshine" -force || true
+              sleep 2
+            fi
+          }
+
+          for attempt in 1 2 3; do
+            if [[ "${attempt}" -eq 1 ]]; then
+              cpack_args=()
+            else
+              cpack_args=(--verbose)
+            fi
+
+            if cpack -G DragNDrop --config build/CPackConfig.cmake "${cpack_args[@]}"; then
+              break
+            fi
+
+            if [[ "${attempt}" -eq 3 ]]; then
+              echo "cpack failed after ${attempt} attempts. Aborting."
               exit 1
             fi
-          fi
+
+            echo "cpack failed on attempt ${attempt}; retrying..."
+            cleanup_dmg_mount
+          done
 
           mkdir -p artifacts
           cp "build/cpack_artifacts/Sunshine.dmg" "artifacts/Sunshine-${MATRIX_NAME}.dmg"
