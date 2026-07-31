@@ -4,8 +4,8 @@
  */
 // standard includes
 #include <array>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <map>
 #include <mutex>
 #include <unordered_set>
@@ -15,8 +15,8 @@
 #include <lizardbyte/common/env.h>
 
 // local includes
-#include "confighttp_validation.h"
 #include "config.h"
+#include "confighttp_validation.h"
 #include "platform/common.h"
 #include "process.h"
 
