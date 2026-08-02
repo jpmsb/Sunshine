@@ -794,6 +794,13 @@ namespace pipewire {
   class pipewire_display_t: public platf::display_t {
   public:
     /**
+     * @brief Release DMA-BUF modifier allocations owned by this display.
+     */
+    ~pipewire_display_t() override {
+      clear_dmabuf_infos();
+    }
+
+    /**
      * @brief Initialize pipewire and check hwdevice type.
      *
      * @param hwdevice_type Hardware device type requested for capture or encode.
@@ -948,6 +955,8 @@ namespace pipewire {
       // SIGSEGV on the next teardown.
       if (negotiated_w <= 0 || negotiated_h <= 0) {
         BOOST_LOG(error) << "[pipewire] PipeWire did not negotiate a valid resolution for the stream"sv;
+        // Half-dead portal nodes on PipeWire 1.6.x SIGSEGV inside pw_stream_destroy.
+        pipewire.destroy(::pipewire::pipewire_t::destroy_stream_e::via_core);
         return -1;
       }
       if (negotiated_w != width || negotiated_h != height) {
@@ -1294,6 +1303,19 @@ namespace pipewire {
       return false;
     }
 
+    /**
+     * @brief Free previously allocated DMA-BUF modifier lists and reset the count.
+     */
+    void clear_dmabuf_infos() {
+      for (int i = 0; i < n_dmabuf_infos; ++i) {
+        g_free(dmabuf_infos[i].modifiers);
+        dmabuf_infos[i].modifiers = nullptr;
+        dmabuf_infos[i].n_modifiers = 0;
+        dmabuf_infos[i].format = 0;
+      }
+      n_dmabuf_infos = 0;
+    }
+
     void query_dmabuf_formats(EGLDisplay egl_display) {
       EGLint num_dmabuf_formats = 0;
       std::array<EGLint, MAX_DMABUF_FORMATS> dmabuf_formats = {0};
@@ -1329,6 +1351,10 @@ namespace pipewire {
     }
 
     int get_dmabuf_modifiers() {
+      // Always reset before querying. n_dmabuf_infos was previously uninitialized, so a
+      // garbage (especially negative) index SIGSEGVs when writing dmabuf_infos[n].
+      clear_dmabuf_infos();
+
       if (wl_display.init() < 0) {
         return -1;
       }
@@ -1378,8 +1404,8 @@ namespace pipewire {
 
     platf::mem_type_e mem_type;
     wl::display_t wl_display;
-    std::array<struct dmabuf_format_info_t, MAX_DMABUF_FORMATS> dmabuf_infos;
-    int n_dmabuf_infos;
+    std::array<struct dmabuf_format_info_t, MAX_DMABUF_FORMATS> dmabuf_infos {};
+    int n_dmabuf_infos = 0;  ///< Number of filled entries in dmabuf_infos (must start at 0).
     bool display_is_nvidia = false;  // Track if display GPU is NVIDIA
     std::chrono::nanoseconds delay;
     std::optional<std::uint64_t> last_pts {};
