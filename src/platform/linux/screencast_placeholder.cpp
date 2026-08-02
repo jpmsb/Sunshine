@@ -19,7 +19,7 @@
 namespace portal {
   namespace {
 
-    // Minimal 8x8 ASCII font for printable characters (0x20-0x7E), row-major MSB left.
+    // Minimal 8x8 ASCII font for printable characters (0x20-0x7E), row-major LSB left.
     // Glyphs outside that range render as a solid block.
     constexpr uint8_t FONT_8X8[95][8] = {
       {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  // space
@@ -127,37 +127,24 @@ namespace portal {
     };
 
     /**
-     * @brief Draw a single glyph into a BGRA frame.
+     * @brief Return whether a font glyph pixel is set (LSB = leftmost column).
+     *
+     * @param ch Character to sample.
+     * @param row Glyph row in `[0, 8)`.
+     * @param col Glyph column in `[0, 8)`, where 0 is the left edge.
+     * @return True when the pixel is set.
      */
-    void blit_glyph(std::uint8_t *bgra, int width, int height, int x0, int y0, char ch, std::uint8_t fr, std::uint8_t fg, std::uint8_t fb) {
+    bool font_bit(char ch, int row, int col) {
+      if (row < 0 || row >= 8 || col < 0 || col >= 8) {
+        return false;
+      }
       const uint8_t *glyph = FONT_8X8[0];
       if (ch >= 0x20 && ch <= 0x7E) {
         glyph = FONT_8X8[ch - 0x20];
       } else {
-        static constexpr uint8_t block[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-        glyph = block;
+        return true;
       }
-      for (int row = 0; row < 8; ++row) {
-        const int y = y0 + row;
-        if (y < 0 || y >= height) {
-          continue;
-        }
-        const uint8_t bits = glyph[row];
-        for (int col = 0; col < 8; ++col) {
-          if ((bits & (0x80 >> col)) == 0) {
-            continue;
-          }
-          const int x = x0 + col;
-          if (x < 0 || x >= width) {
-            continue;
-          }
-          auto *px = bgra + (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x)) * 4;
-          px[0] = fb;
-          px[1] = fg;
-          px[2] = fr;
-          px[3] = 255;
-        }
-      }
+      return (glyph[row] & (1u << col)) != 0;
     }
 
     /**
@@ -199,13 +186,10 @@ namespace portal {
       int x = std::max(0, (width - text_w) / 2);
       const int y = std::max(0, (height - glyph_h) / 2);
 
-      // Scale by drawing the 8x8 glyph into a temporary then expanding — simpler: draw each pixel scale×scale.
       for (char ch : line) {
         for (int row = 0; row < 8; ++row) {
-          const uint8_t *glyph = (ch >= 0x20 && ch <= 0x7E) ? FONT_8X8[ch - 0x20] : FONT_8X8[0];
-          const uint8_t bits = glyph[row];
           for (int col = 0; col < 8; ++col) {
-            if ((bits & (0x80 >> col)) == 0) {
+            if (!font_bit(ch, row, col)) {
               continue;
             }
             for (int dy = 0; dy < scale; ++dy) {
@@ -226,7 +210,6 @@ namespace portal {
         }
         x += glyph_w + gap;
       }
-      (void) blit_glyph;
     }
 
     /**
@@ -317,6 +300,18 @@ namespace portal {
     };
 
   }  // namespace
+
+  /**
+   * @brief Return whether a screencast placeholder font glyph pixel is set.
+   *
+   * @param ch Character to sample.
+   * @param row Glyph row in `[0, 8)`.
+   * @param col Glyph column in `[0, 8)`, where 0 is the left edge.
+   * @return True when the pixel is set.
+   */
+  bool placeholder_font_bit(char ch, int row, int col) {
+    return font_bit(ch, row, col);
+  }
 
   /**
    * @brief Create the screencast waiting placeholder display.
