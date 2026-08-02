@@ -216,6 +216,12 @@ namespace video {
      * @return Conversion status.
      */
     int convert(platf::img_t &img) override {
+      // PipeWire (and similar) dummy frames intentionally leave CPU pixels unset until the
+      // first real buffer arrives. Keep the encoder contents instead of failing sws.
+      if (!img.data) {
+        return 0;
+      }
+
       // If we need to add aspect ratio padding, we need to scale into an intermediate output buffer
       bool requires_padding = (sw_frame->width != sws_output_frame->width || sw_frame->height != sws_output_frame->height);
 
