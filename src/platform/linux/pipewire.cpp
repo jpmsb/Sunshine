@@ -95,11 +95,11 @@ namespace pipewire {
    * @brief PipeWire stream handle, format, and shared state pointer.
    */
   struct stream_data_t {
-    struct pw_stream *stream;  ///< PipeWire stream handle used for screencast frames.
-    struct spa_hook stream_listener;  ///< Hook registering callbacks on the PipeWire stream.
-    struct spa_video_info format;  ///< Negotiated PipeWire video format.
-    struct pw_buffer *current_buffer;  ///< PipeWire buffer currently exposed to the capture thread.
-    uint64_t drm_format;  ///< DRM format.
+    struct pw_stream *stream = nullptr;  ///< PipeWire stream handle used for screencast frames.
+    struct spa_hook stream_listener {};  ///< Hook registering callbacks on the PipeWire stream.
+    struct spa_video_info format {};  ///< Negotiated PipeWire video format.
+    struct pw_buffer *current_buffer = nullptr;  ///< PipeWire buffer currently exposed to the capture thread.
+    uint64_t drm_format = 0;  ///< DRM format.
     std::shared_ptr<shared_state_t> shared;  ///< State shared between PipeWire callbacks and the capture backend.
     std::mutex frame_mutex;  ///< Synchronizes access to the current PipeWire frame.
     std::condition_variable frame_cv;  ///< Signals arrival or release of a PipeWire frame.
@@ -129,13 +129,16 @@ namespace pipewire {
 
   /**
    * @brief Pipewire image assembled for encoding.
+   *
+   * For MemPtr capture, `data` borrows PipeWire staging memory and must not be freed.
+   * DMA-BUF capture uses `sd.fds` instead of owning a CPU buffer.
    */
   struct img_descriptor_t: public egl::img_descriptor_t {
+    /**
+     * @brief Drop borrowed frame pointers without freeing PipeWire-owned memory.
+     */
     ~img_descriptor_t() override {
-      if (data) {
-        delete[] data;
-        data = nullptr;
-      }
+      data = nullptr;
     }
   };
 
@@ -505,6 +508,7 @@ namespace pipewire {
         auto *img_descriptor = static_cast<egl::img_descriptor_t *>(img);
         fill_img_metadata(img_descriptor, buf);
         if (buf->datas[0].type == SPA_DATA_DmaBuf) {
+          img->data = nullptr;
           fill_img_dmabuf(img_descriptor, buf, stream_data);
         } else if (stream_data.front_buffer) {
           img->data = stream_data.front_buffer->data();
