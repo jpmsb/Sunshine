@@ -109,6 +109,18 @@ namespace portal {
   constexpr std::string_view SCREENCAST_PLACEHOLDER_NAME = "screencast-placeholder";  ///< Synthetic display while waiting for portal Start.
 
   /**
+   * @brief Return whether a screencast placeholder font glyph pixel is set.
+   *
+   * Uses the classic 8x8 bitmap convention where bit 0 (LSB) is the leftmost column.
+   *
+   * @param ch Character to sample.
+   * @param row Glyph row in `[0, 8)`.
+   * @param col Glyph column in `[0, 8)`, where 0 is the left edge.
+   * @return True when the pixel is set.
+   */
+  bool placeholder_font_bit(char ch, int row, int col);
+
+  /**
    * @brief Capture backends that share the xdg-desktop-portal PipeWire path.
    */
   enum class capture_mode_e {
