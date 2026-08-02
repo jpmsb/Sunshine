@@ -1311,14 +1311,23 @@ namespace platf {
   /**
    * @brief Report whether encoder backends should be probed again before streaming.
    *
-   * @return Always `true` because Linux GPU changes are not tracked by this backend.
+   * @return `true` when the GPU render device changed since the last observation.
    */
   bool needs_encoder_reenumeration() {
     // Only re-probe if the GPU render device changed (hotplug, driver reload).
     // Full re-probing on every reconnect leaks ~20 MB due to FFmpeg CBS
     // allocations during HEVC/AV1 codec validation.
+    //
+    // First observation only establishes the baseline. Returning true when
+    // last_render_device was empty forced a second full portal/encoder probe on
+    // the first client connect after every Sunshine start (tray/ScreenCast flicker).
     static std::string last_render_device;
     auto current = platf::resolve_render_device();
+    // First observation only establishes the baseline (do not force a re-probe).
+    if (last_render_device.empty()) {
+      last_render_device = current;
+      return false;
+    }
     if (current == last_render_device) {
       return false;
     }
@@ -1555,8 +1564,9 @@ namespace platf {
       // Drop file capabilities synchronously before the bootstrap thread opens the
       // portal. RPM packages ship setcap; xdg-desktop-portal denies CreateSession
       // while CAP_SYS_ADMIN/SYS_NICE remain or the process is non-dumpable.
+      // Bootstrap picker is started from main after the system tray is registered so
+      // the tray icon is visible while the ScreenCast source dialog is open.
       drop_elevated_privileges(true);
-      ::portal::screencast_bootstrap_start();
     }
 #endif
 #ifdef SUNSHINE_BUILD_KWIN
