@@ -1306,7 +1306,9 @@ namespace portal {
         const auto &stream = dbus->pipewire_streams.front();
         ensure_screencast_keepalive(dbus, stream.pipewire_node, width > 0 ? width : stream.width, height > 0 ? height : stream.height);
       }
-      pipewire.destroy();
+      // Portal FDs on PipeWire 1.6.x have SIGSEGV'd in pw_stream_destroy during encoder-probe
+      // teardowns; release the stream via core disconnect instead.
+      pipewire.destroy(pipewire::pipewire_t::destroy_stream_e::via_core);
       // Screencast keeps the process-wide D-Bus session (and keepalive) so reconnect and
       // additional clients reuse the same picker grant without reopening the UI.
       dbus.reset();
