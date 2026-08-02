@@ -424,6 +424,34 @@ int main(int argc, char *argv[]) {
     BOOST_LOG(warning) << "No gamepad input is available"sv;
   }
 
+  // Register the tray before the ScreenCast portal picker (bootstrap) so the icon
+  // is visible while the user selects a capture source. Starting the tray after
+  // probe left the icon missing until the portal dialog was closed.
+  if (tray_is_enabled && config::sunshine.system_tray) {
+    BOOST_LOG(info) << "Starting system tray"sv;
+#ifdef _WIN32
+    // TODO: Windows has a weird bug where when running as a service and on the first Windows boot,
+    // the tray icon would not appear even though Sunshine is running correctly otherwise.
+    // Restarting the service would allow the icon to appear normally.
+    // For now we will keep the Windows tray icon on a separate thread.
+    // Ideally, we would run the system tray on the main thread for all platforms.
+    system_tray::init_tray_threaded();
+#else
+    system_tray::init_tray();
+    // Give StatusNotifierItem a short window to register with the desktop shell
+    // before the modal ScreenCast picker appears.
+    for (int i = 0; i < 30; ++i) {
+      if (system_tray::process_tray_events() != 0) {
+        break;
+      }
+      std::this_thread::sleep_for(16ms);
+    }
+#endif
+  }
+
+  // Opens the ScreenCast source picker on a background thread when capture=screencast.
+  platf::start_screencast_bootstrap();
+
   if (video::probe_encoders()) {
     BOOST_LOG(error) << "Video failed to find working encoder"sv;
   }
@@ -452,20 +480,6 @@ int main(int argc, char *argv[]) {
   // FIXME: Temporary workaround: Simple-Web_server needs to be updated or replaced
   if (shutdown_event->peek()) {
     return lifetime::desired_exit_code;
-  }
-
-  if (tray_is_enabled && config::sunshine.system_tray) {
-    BOOST_LOG(info) << "Starting system tray"sv;
-#ifdef _WIN32
-    // TODO: Windows has a weird bug where when running as a service and on the first Windows boot,
-    // the tray icon would not appear even though Sunshine is running correctly otherwise.
-    // Restarting the service would allow the icon to appear normally.
-    // For now we will keep the Windows tray icon on a separate thread.
-    // Ideally, we would run the system tray on the main thread for all platforms.
-    system_tray::init_tray_threaded();
-#else
-    system_tray::init_tray();
-#endif
   }
 
   std::jthread httpThread {nvhttp::start};
