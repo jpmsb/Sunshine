@@ -301,14 +301,6 @@ namespace portal {
 
   }  // namespace
 
-  /**
-   * @brief Return whether a screencast placeholder font glyph pixel is set.
-   *
-   * @param ch Character to sample.
-   * @param row Glyph row in `[0, 8)`.
-   * @param col Glyph column in `[0, 8)`, where 0 is the left edge.
-   * @return True when the pixel is set.
-   */
   bool placeholder_font_bit(char ch, int row, int col) {
     return font_bit(ch, row, col);
   }
