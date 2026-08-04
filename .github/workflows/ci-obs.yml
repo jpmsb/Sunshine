@@ -1,6 +1,9 @@
 ---
 # Build openSUSE Tumbleweed RPMs on GitHub Actions (x86_64 and aarch64).
 # OBS submit for the public repository is handled separately by _update-obs-repo.yml.
+#
+# The job runs on the Ubuntu host (not job-level container) so we can free runner
+# disk before pulling Tumbleweed and downloading the CUDA toolkit runfile (~4GiB).
 name: CI-OBS
 permissions: {}
 
@@ -38,38 +41,51 @@ jobs:
             runner: ubuntu-22.04
           - arch: aarch64
             runner: ubuntu-22.04-arm
-    container:
-      image: registry.opensuse.org/opensuse/tumbleweed
-      options: --cpus 4 --memory 8g
     steps:
-      - name: Install base tools
-        shell: bash
-        run: |
-          zypper --non-interactive refresh
-          zypper --non-interactive install -y --no-recommends \
-            git \
-            pigz \
-            rpm-build \
-            rpmlint \
-            tar \
-            which
+      - name: More space
+        uses: LizardByte/actions/actions/more_space@d0ae7f82215a479fe2b74f4088c53ee6460513dd  # v2026.728.214955
+        with:
+          analyze-space-savings: true
+          clean-all: true
 
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           submodules: recursive
 
-      - name: Build RPM
+      - name: Build RPM in Tumbleweed container
         shell: bash
         run: |
-          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
-          chmod +x ./scripts/build_tumbleweed_rpm.sh ./scripts/prepare_rpm_source.sh
-          ./scripts/build_tumbleweed_rpm.sh \
-            --sudo-off \
-            --version "${BUILD_VERSION}" \
-            --branch "${BRANCH}" \
-            --commit "${COMMIT}" \
-            --output-dir "${GITHUB_WORKSPACE}/artifacts"
+          set -euo pipefail
+          df -h
+          docker run --rm \
+            --cpus 4 \
+            --memory 8g \
+            -e BRANCH \
+            -e BUILD_VERSION \
+            -e COMMIT \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            registry.opensuse.org/opensuse/tumbleweed \
+            bash -ec '
+              set -euo pipefail
+              zypper --non-interactive refresh
+              zypper --non-interactive install -y --no-recommends \
+                git \
+                pigz \
+                rpm-build \
+                rpmlint \
+                tar \
+                which
+              git config --global --add safe.directory /workspace
+              chmod +x ./scripts/build_tumbleweed_rpm.sh ./scripts/prepare_rpm_source.sh
+              ./scripts/build_tumbleweed_rpm.sh \
+                --sudo-off \
+                --version "${BUILD_VERSION}" \
+                --branch "${BRANCH}" \
+                --commit "${COMMIT}" \
+                --output-dir /workspace/artifacts
+            '
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
