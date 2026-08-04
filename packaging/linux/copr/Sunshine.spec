@@ -299,23 +299,41 @@ function install_cuda() {
   # check if we need to install cuda
   if [ -f "%{cuda_dir}/bin/nvcc" ]; then
     echo "cuda already installed"
-    return
+    return 0
   fi
 
   local cuda_prefix="https://developer.download.nvidia.com/compute/cuda/"
   local cuda_suffix=""
   if [ "$architecture" == "aarch64" ]; then
-    local cuda_suffix="_sbsa"
+    # CUDA aarch64 toolkit installers use the SBSA (server) naming.
+    cuda_suffix="_sbsa"
   fi
 
   local url="${cuda_prefix}%{cuda_version}/local_installers/cuda_%{cuda_version}_%{cuda_build}_linux${cuda_suffix}.run"
   echo "cuda url: ${url}"
-  wget \
+
+  # Toolkit runfile is ~4GiB and extracts to several more GiB. Fail early with a clear
+  # message instead of a quiet wget exit when the runner/container is out of disk.
+  local free_kib
+  free_kib="$(df -Pk "%{_builddir}" | awk 'NR==2 {print $4}')"
+  if [ -n "${free_kib}" ] && [ "${free_kib}" -lt 10485760 ]; then
+    echo "ERROR: insufficient disk space for CUDA toolkit (need >= 10GiB free, have $((free_kib / 1024))MiB)." >&2
+    df -h "%{_builddir}" >&2 || true
+    return 1
+  fi
+
+  # Do not use wget -q: CI needs the real failure reason (ENOSPC, 403, TLS, etc.).
+  if ! wget \
     "$url" \
     --progress=bar:force:noscroll \
     --retry-connrefused \
     --tries=3 \
-    -q -O "%{_builddir}/cuda.run"
+    -O "%{_builddir}/cuda.run"; then
+    echo "ERROR: failed to download CUDA runfile from ${url}" >&2
+    df -h "%{_builddir}" >&2 || true
+    rm -f "%{_builddir}/cuda.run"
+    return 1
+  fi
   chmod a+x "%{_builddir}/cuda.run"
 
   # openSUSE Tumbleweed provides libxml2.so.16; the NVIDIA cuda-installer still requires libxml2.so.2.
@@ -334,15 +352,21 @@ function install_cuda() {
     done
   fi
 
-  "%{_builddir}/cuda.run" \
+  if ! "%{_builddir}/cuda.run" \
     --no-drm \
     --no-man-page \
     --no-opengl-libs \
     --override \
     --silent \
     --toolkit \
-    --toolkitpath="%{cuda_dir}"
-  rm "%{_builddir}/cuda.run"
+    --toolkitpath="%{cuda_dir}"; then
+    echo "ERROR: CUDA runfile installer failed." >&2
+    df -h "%{_builddir}" >&2 || true
+    rm -f "%{_builddir}/cuda.run"
+    return 1
+  fi
+  rm -f "%{_builddir}/cuda.run"
+  return 0
 }
 
 function detect_nvcc_path() {
@@ -373,8 +397,13 @@ fi
 
 %if %{with bundled_cuda}
 if [ -z "${nvcc_path}" ]; then
-  install_cuda
-  nvcc_path="%{cuda_dir}/bin/nvcc"
+  # Keep the RPM build going if the runfile cannot be fetched/installed (common on
+  # space-constrained CI runners). CMake then falls back via CUDA_FAIL_ON_MISSING.
+  if install_cuda; then
+    nvcc_path="%{cuda_dir}/bin/nvcc"
+  else
+    echo "WARNING: bundled CUDA install failed; building without NVENC/NvFBC."
+  fi
 fi
 %else
 echo "bundled_cuda disabled; skipping NVIDIA CUDA runfile download"
