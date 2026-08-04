@@ -283,6 +283,14 @@ fi
 
 if [[ "${install_deps}" -eq 1 ]]; then
   install_build_requires
+  # Drop zypper caches so the CUDA runfile (~4GiB) + toolkit extract fit on small CI disks.
+  echo "Cleaning zypper caches to free disk space..."
+  if [[ -n "${sudo_cmd}" ]]; then
+    ${sudo_cmd} zypper --non-interactive clean --all || true
+  else
+    zypper --non-interactive clean --all || true
+  fi
+  df -h || true
 fi
 
 rpmbuild_args=(
