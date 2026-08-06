@@ -4,6 +4,7 @@
  */
 // standard includes
 #include <atomic>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -961,6 +962,10 @@ namespace portal {
   /**
    * @brief Ensure an idle PipeWire consumer is attached to the live screencast node.
    *
+   * Uses a lightweight memptr consumer only between clients. Display init stops this keepalive
+   * immediately before ensure_stream (see on_before_ensure_stream) so the streaming consumer
+   * can negotiate DMA-BUF alone. Encode still gates VAAPI VRAM on `negotiated_dmabuf`.
+   *
    * @param session Live screencast D-Bus session.
    * @param node PipeWire node id from ScreenCast Start.
    * @param width Last known width (1 if unknown).
@@ -975,7 +980,11 @@ namespace portal {
     {
       std::scoped_lock lock(screencast_keepalive.mutex);
       if (screencast_keepalive.pipewire && screencast_keepalive.session == session && screencast_keepalive.node == node) {
-        return 0;
+        const bool dead = screencast_keepalive.shared && screencast_keepalive.shared->stream_dead.load();
+        if (!dead) {
+          return 0;
+        }
+        BOOST_LOG(warning) << "[portalgrab] Screencast keepalive stream is dead; recreating"sv;
       }
     }
     stop_screencast_keepalive();
@@ -996,7 +1005,7 @@ namespace portal {
 
     const uint32_t ensure_w = width > 0 ? static_cast<uint32_t>(width) : 1u;
     const uint32_t ensure_h = height > 0 ? static_cast<uint32_t>(height) : 1u;
-    // Memptr-only consumer: purpose is to keep the portal node alive, not to encode.
+    // Memptr-only: cheap to keep the portal node alive between clients.
     if (pw->ensure_stream(platf::mem_type_e::system, ensure_w, ensure_h, 60, nullptr, 0, false) < 0) {
       BOOST_LOG(warning) << "[portalgrab] Keepalive ensure_stream failed"sv;
       pw->destroy();
@@ -1010,7 +1019,7 @@ namespace portal {
       screencast_keepalive.shared = std::move(shared);
       screencast_keepalive.node = node;
     }
-    BOOST_LOG(info) << "[portalgrab] Screencast PipeWire keepalive active for node "sv << node;
+    BOOST_LOG(info) << "[portalgrab] Screencast PipeWire keepalive active for node "sv << node << " (memptr)"sv;
     return 0;
   }
 
@@ -1411,6 +1420,17 @@ namespace portal {
     platf::capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) override {
       capture_started_ = true;
       return pipewire::pipewire_display_t::capture(push_captured_image_cb, pull_free_image_cb, cursor);
+    }
+
+    /**
+     * @brief Drop idle keepalive immediately before PipeWire connect in init()/capture().
+     *
+     * Stopping only in capture() was too late: init() already called ensure_stream while the
+     * memptr keepalive was attached, so reconnect negotiated MemPtr and stuck there (ensure
+     * is a no-op once the stream exists). That path caused multi-second black on quick reconnect.
+     */
+    void on_before_ensure_stream() override {
+      stop_screencast_keepalive();
     }
 
     std::shared_ptr<dbus_t> dbus;  ///< DBus portal client (process-shared for screencast mode).
