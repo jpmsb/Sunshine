@@ -6,9 +6,14 @@
 
 // standard includes
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+
+// local includes
+#include "src/platform/common.h"
+#include "src/video.h"
 
 namespace portal {
 
@@ -119,6 +124,15 @@ namespace portal {
    * @return True when the pixel is set.
    */
   bool placeholder_font_bit(char ch, int row, int col);
+
+  /**
+   * @brief Create the screencast waiting placeholder display.
+   *
+   * @param hwdevice_type Hardware device type requested for capture or encode.
+   * @param config Client video configuration.
+   * @return Placeholder display backend.
+   */
+  std::shared_ptr<platf::display_t> make_screencast_placeholder_display(platf::mem_type_e hwdevice_type, const video::config_t &config);
 
   /**
    * @brief Capture backends that share the xdg-desktop-portal PipeWire path.
