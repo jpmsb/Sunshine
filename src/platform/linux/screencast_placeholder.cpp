@@ -15,6 +15,9 @@
 #include "src/config.h"
 #include "src/platform/common.h"
 #include "src/video.h"
+#ifdef SUNSHINE_BUILD_VAAPI
+  #include "vaapi.h"
+#endif
 
 namespace portal {
   namespace {
@@ -220,10 +223,11 @@ namespace portal {
       /**
        * @brief Construct a placeholder display for the given stream config.
        *
-       * @param hwdevice_type Requested encode memory type (software path is always used).
+       * @param hwdevice_type Requested encode memory type (VAAPI uses the CPU upload path).
        * @param config Client video configuration (resolution / fps).
        */
-      placeholder_display_t(platf::mem_type_e hwdevice_type [[maybe_unused]], const video::config_t &config) {
+      placeholder_display_t(platf::mem_type_e hwdevice_type, const video::config_t &config):
+          mem_type(hwdevice_type) {
         width = std::max(1, config.width);
         height = std::max(1, config.height);
         env_width = width;
@@ -263,7 +267,14 @@ namespace portal {
       }
 
       std::unique_ptr<platf::avcodec_encode_device_t> make_avcodec_encode_device(platf::pix_fmt_e pix_fmt [[maybe_unused]]) override {
-        // Always use the software upload path; the placeholder is CPU BGRA only.
+#ifdef SUNSHINE_BUILD_VAAPI
+        // Placeholder frames are CPU BGRA; use the VAAPI RAM upload path so encoder
+        // probe gets Sunshine's vaGetDisplayDRM init callback instead of FFmpeg's
+        // generic av_hwdevice_ctx_create (which fails on hybrid AMD/NVIDIA setups).
+        if (mem_type == platf::mem_type_e::vaapi) {
+          return va::make_avcodec_encode_device(width, height, false);
+        }
+#endif
         return std::make_unique<platf::avcodec_encode_device_t>();
       }
 
@@ -293,6 +304,7 @@ namespace portal {
       }
 
     private:
+      platf::mem_type_e mem_type = platf::mem_type_e::system;  ///< Requested encode memory type.
       int framerate = 60;
       std::chrono::nanoseconds delay {std::chrono::nanoseconds::zero()};
       rgba_t color {};
