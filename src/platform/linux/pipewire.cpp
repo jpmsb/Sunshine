@@ -86,6 +86,7 @@ namespace pipewire {
     std::atomic<int> color_primaries {0};  ///< PipeWire color-primaries metadata for the stream.
     std::atomic<int> transfer_function {0};  ///< PipeWire transfer-function metadata for the stream.
     std::atomic<bool> stream_dead {false};  ///< Whether the PipeWire stream has been destroyed.
+    std::atomic<bool> negotiated_dmabuf {false};  ///< True when PipeWire negotiated DMA-BUF (vs MemPtr).
     pw_stream_state previous_state;  ///< Previous PipeWire stream state reported by callbacks.
     pw_stream_state current_state;  ///< Current PipeWire stream state reported by callbacks.
     std::string err_msg;  ///< Last PipeWire error message reported by the stream.
@@ -760,9 +761,15 @@ namespace pipewire {
       if (spa_pod_find_prop(param, nullptr, SPA_FORMAT_VIDEO_modifier) != nullptr && d->drm_format) {
         BOOST_LOG(info) << "[pipewire] using DMA-BUF buffers"sv;
         buffer_types |= 1 << SPA_DATA_DmaBuf;
+        if (d->shared) {
+          d->shared->negotiated_dmabuf.store(true);
+        }
       } else {
         BOOST_LOG(info) << "[pipewire] using memory buffers"sv;
         buffer_types |= 1 << SPA_DATA_MemPtr;
+        if (d->shared) {
+          d->shared->negotiated_dmabuf.store(false);
+        }
       }
 
       // Ack the buffer type and metadata
@@ -923,6 +930,7 @@ namespace pipewire {
         shared_state->negotiated_height.store(0);
         shared_state->color_primaries.store(0);
         shared_state->transfer_function.store(0);
+        shared_state->negotiated_dmabuf.store(false);
       }
 
       if (pipewire.init(pipewire_fd, pipewire_node, pipewire_object_serial, shared_state) < 0) {
@@ -935,6 +943,9 @@ namespace pipewire {
       // lets the compositor pick the real window size (avoid forcing 1920x1080).
       const uint32_t ensure_w = width > 0 ? static_cast<uint32_t>(width) : 1u;
       const uint32_t ensure_h = height > 0 ? static_cast<uint32_t>(height) : 1u;
+      // Drop competing consumers (e.g. portal keepalive) immediately before connect so
+      // DMA-BUF can be negotiated; ensure_stream is a no-op once the stream exists.
+      on_before_ensure_stream();
       if (pipewire.ensure_stream(mem_type, ensure_w, ensure_h, framerate, dmabuf_infos.data(), n_dmabuf_infos, display_is_nvidia) < 0) {
         BOOST_LOG(error) << "[pipewire] Failed to ensure pipewire stream. pipewire_t::init() failed.";
         return -1;
@@ -1065,13 +1076,28 @@ namespace pipewire {
       return true;
     }
 
+    /**
+     * @brief Hook invoked immediately before PipeWire stream ensure/connect.
+     *
+     * Portal screencast drops the idle keepalive here so format negotiation is not
+     * poisoned by a competing MemPtr consumer.
+     */
+    virtual void on_before_ensure_stream() {}
+
+    /**
+     * @brief Hook invoked after the capture PipeWire stream is ensured.
+     */
+    virtual void on_stream_ensured() {}
+
     platf::capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) override {
       auto next_frame = std::chrono::steady_clock::now();
 
+      on_before_ensure_stream();
       if (pipewire.ensure_stream(mem_type, width, height, framerate, dmabuf_infos.data(), n_dmabuf_infos, display_is_nvidia) < 0) {
         BOOST_LOG(error) << "[pipewire] Failed to ensure pipewire stream. capture() failed with error.";
         return platf::capture_e::error;
       }
+      on_stream_ensured();
       sleep_overshoot_logger.reset();
 
       while (true) {
@@ -1170,12 +1196,17 @@ namespace pipewire {
     std::unique_ptr<platf::avcodec_encode_device_t> make_avcodec_encode_device(platf::pix_fmt_e pix_fmt) override {
 #ifdef SUNSHINE_BUILD_VAAPI
       if (mem_type == platf::mem_type_e::vaapi) {
-        return va::make_avcodec_encode_device(width, height, n_dmabuf_infos > 0);
+        // Prefer the actually negotiated buffer type. Offering DMA-BUF modifiers is not
+        // enough: keepalive / reconnect can fall back to MemPtr while n_dmabuf_infos > 0,
+        // and a VRAM convert then fails importing fd=-1 (black frames).
+        const bool negotiated_dma = shared_state && shared_state->negotiated_dmabuf.load();
+        const bool want_vram = n_dmabuf_infos > 0 && negotiated_dma;
+        return va::make_avcodec_encode_device(width, height, want_vram);
       }
 #endif
 
 #ifdef SUNSHINE_BUILD_VULKAN
-      if (mem_type == platf::mem_type_e::vulkan && n_dmabuf_infos > 0) {
+      if (mem_type == platf::mem_type_e::vulkan && n_dmabuf_infos > 0 && shared_state && shared_state->negotiated_dmabuf.load()) {
         return vk::make_avcodec_encode_device_vram(width, height, 0, 0);
       }
 #endif
@@ -1408,8 +1439,6 @@ namespace pipewire {
 
     platf::mem_type_e mem_type;
     wl::display_t wl_display;
-    std::array<struct dmabuf_format_info_t, MAX_DMABUF_FORMATS> dmabuf_infos {};
-    int n_dmabuf_infos = 0;  ///< Number of filled entries in dmabuf_infos (must start at 0).
     bool display_is_nvidia = false;  // Track if display GPU is NVIDIA
     std::chrono::nanoseconds delay;
     std::optional<std::uint64_t> last_pts {};
@@ -1426,5 +1455,7 @@ namespace pipewire {
     // Allow subclasses to access for pipewire requirements setup and stream dead checks
     pipewire_t pipewire;  ///< Pipewire.
     std::shared_ptr<shared_state_t> shared_state;  ///< Shared state.
+    std::array<struct dmabuf_format_info_t, MAX_DMABUF_FORMATS> dmabuf_infos {};  ///< DMA-BUF formats offered to PipeWire.
+    int n_dmabuf_infos = 0;  ///< Number of filled entries in dmabuf_infos (must start at 0).
   };
 }  // namespace pipewire
