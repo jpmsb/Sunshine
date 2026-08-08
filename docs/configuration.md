@@ -1928,7 +1928,8 @@ min_log_level = 2
     <tr>
         <td>Description</td>
         <td colspan="2">
-            The path where the Sunshine log is stored.
+            The path where the current Sunshine log is stored. Each time Sunshine starts, up to five previous
+            logs are retained by appending <code>.1</code> through <code>.5</code> to this path.
         </td>
     </tr>
     <tr>
