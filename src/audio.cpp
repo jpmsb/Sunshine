@@ -55,7 +55,7 @@ namespace audio {
       2,
       1,
       1,
-      platf::speaker::map_stereo,
+      platf::speaker::map_stereo.data(),
       96000,
     },
     {
@@ -63,7 +63,7 @@ namespace audio {
       2,
       1,
       1,
-      platf::speaker::map_stereo,
+      platf::speaker::map_stereo.data(),
       512000,
     },
     {
@@ -71,7 +71,7 @@ namespace audio {
       6,
       4,
       2,
-      platf::speaker::map_surround51,
+      platf::speaker::map_surround51.data(),
       256000,
     },
     {
@@ -79,7 +79,7 @@ namespace audio {
       6,
       6,
       0,
-      platf::speaker::map_surround51,
+      platf::speaker::map_surround51.data(),
       1536000,
     },
     {
@@ -87,7 +87,7 @@ namespace audio {
       8,
       5,
       3,
-      platf::speaker::map_surround71,
+      platf::speaker::map_surround71.data(),
       450000,
     },
     {
@@ -95,7 +95,7 @@ namespace audio {
       8,
       8,
       0,
-      platf::speaker::map_surround71,
+      platf::speaker::map_surround71.data(),
       2048000,
     },
   };

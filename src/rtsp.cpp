@@ -884,6 +884,7 @@ namespace rtsp_stream {
 
   void terminate_sessions() {
     server.clear(true);
+    input::terminate_gamepads();
   }
 
   /**
@@ -891,6 +892,7 @@ namespace rtsp_stream {
    */
   void terminate_sessions_by_cert(std::string_view cert) {
     server.clear_by_cert(cert);
+    input::terminate_gamepads(cert);
   }
 
   std::vector<active_session_info_t> list_active_sessions() {
