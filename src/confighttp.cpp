@@ -52,10 +52,7 @@
 #include "platform/common.h"
 #include "process.h"
 #include "rtsp.h"
-<<<<<<< HEAD
 #include "stream.h"
-=======
->>>>>>> upstream/master
 #include "system_tray.h"
 #include "utility.h"
 #include "uuid.h"
