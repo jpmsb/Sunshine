@@ -5,11 +5,7 @@
 #pragma once
 
 // standard includes
-<<<<<<< HEAD
 #include <cstdint>
-#include <string>
-
-=======
 #include <string>
 
 #ifdef _WIN32
@@ -18,7 +14,6 @@ namespace lvh {
 }
 #endif
 
->>>>>>> upstream/master
 /**
  * @brief Handles the system tray icon and notification system.
  */
@@ -177,6 +172,11 @@ namespace system_tray {
    * @param app_name The started application name
    */
   void update_tray_stopped(std::string app_name);
+
+  /**
+   * @brief Sets the tray icon in pairing mode and spawns the pairing notification.
+   */
+  void update_tray_require_pin();
 
   /**
    * @brief Show a desktop notification when a client requests pairing.
