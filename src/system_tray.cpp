@@ -5,47 +5,10 @@
 // macros
 #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
 
-<<<<<<< HEAD
   #if defined(_WIN32)
     #define WIN32_LEAN_AND_MEAN  ///< Exclude rarely-used Windows headers from winsock/windows includes.
     #include <accctrl.h>
     #include <aclapi.h>
-=======
-  /**
-   * @def TRAY_ICON
-   * @brief Path to the default system tray icon.
-   */
-  #define TRAY_ICON WEB_DIR "images/logo-sunshine.svg"
-  /**
-   * @def TRAY_ICON_PLAYING
-   * @brief Path to the system tray icon used while streaming.
-   */
-  #define TRAY_ICON_PLAYING WEB_DIR "images/sunshine-playing.svg"
-  /**
-   * @def TRAY_ICON_PAUSING
-   * @brief Path to the system tray icon used while streaming is paused.
-   */
-  #define TRAY_ICON_PAUSING WEB_DIR "images/sunshine-pausing.svg"
-  /**
-   * @def TRAY_ICON_LOCKED
-   * @brief Path to the system tray icon used for pairing requests.
-   */
-  #define TRAY_ICON_LOCKED WEB_DIR "images/sunshine-locked.svg"
-  /**
-   * @def TRAY_ICON_VIRTUALHID
-   * @brief Path to the Virtual HID Driver notification icon.
-   */
-  #define TRAY_ICON_VIRTUALHID WEB_DIR "images/logo-libvirtualhid.svg"
-
-  #if defined(_WIN32)
-    /**
-     * @def WIN32_LEAN_AND_MEAN
-     * @brief Macro for WIN32 LEAN AND MEAN.
-     */
-    #define WIN32_LEAN_AND_MEAN
-    #include <AccCtrl.h>
-    #include <AclAPI.h>
->>>>>>> upstream/master
   #elif defined(__APPLE__) || defined(__MACH__)
     #include <CoreFoundation/CoreFoundation.h>
     #include <dispatch/dispatch.h>
@@ -55,30 +18,21 @@
   #include <array>
   #include <atomic>
   #include <csignal>
-<<<<<<< HEAD
+  #include <cstddef>
   #include <deque>
   #include <filesystem>
   #include <format>
+  #include <functional>
   #include <memory>
   #include <mutex>
-=======
-  #include <cstddef>
-  #include <filesystem>
-  #include <format>
-  #include <functional>
-  #include <mutex>
   #include <optional>
->>>>>>> upstream/master
   #include <string>
   #include <string_view>
   #include <system_error>
   #include <thread>
   #include <unordered_map>
-<<<<<<< HEAD
-  #include <vector>
-=======
   #include <utility>
->>>>>>> upstream/master
+  #include <vector>
 
   // lib includes
   #include <boost/filesystem.hpp>
@@ -99,14 +53,11 @@
   #include "process.h"
   #include "rtsp.h"
   #include "src/entry_handler.h"
-<<<<<<< HEAD
   #include "stream.h"
-=======
   #include "system_tray.h"
   #ifdef _WIN32
     #include "platform/windows/utf_utils.h"
   #endif
->>>>>>> upstream/master
 
 using namespace std::literals;
 
@@ -300,21 +251,6 @@ namespace system_tray {
     lifetime::exit_sunshine(0, true);
   }
 
-<<<<<<< HEAD
-  /**
-   * @brief Tray action metadata stored in tray_menu::context.
-   */
-  struct tray_session_action_t {
-    uint32_t session_id;  ///< Launch-session identifier for the target stream.
-    /**
-     * @brief Tray action performed when a connected-client menu item is selected.
-     */
-    enum class type_e {
-      pause,  ///< Pause the target session.
-      resume,  ///< Resume the target session.
-      disconnect,  ///< Disconnect the target session.
-    } type;  ///< Action to perform for the menu item.
-=======
   #ifdef _WIN32
   /**
    * @brief Create the initial Virtual HID Driver license submenu.
@@ -334,44 +270,19 @@ namespace system_tray {
   static auto virtualhid_license_menu = initial_virtualhid_license_menu();  ///< Virtual HID Driver license submenu.
   #endif
 
-  // Tray menu
-  static struct tray tray = {
-    .icon = TRAY_ICON,
-    .tooltip = PROJECT_NAME,
-    .menu =
-      (struct tray_menu[]) {
-        // Tray menu labels currently use the project's English source strings.
-        {.text = "Open Sunshine", .cb = tray_open_ui_cb},
-        {.text = "-"},
-  #ifdef _WIN32
-        {.text = "Virtual HID Driver", .submenu = virtualhid_license_menu.data()},
-        {.text = "-"},
-  #endif
-        {.text = "Donate",
-         .submenu =
-           (struct tray_menu[]) {
-             {.text = "GitHub Sponsors", .cb = tray_donate_github_cb},
-             {.text = "Patreon", .cb = tray_donate_patreon_cb},
-             {.text = "PayPal", .cb = tray_donate_paypal_cb},
-             {.text = nullptr}
-           }},
-        {.text = "-"},
-  // Currently display device settings are only supported on Windows
-  #ifdef _WIN32
-        {.text = "Reset Display Device Config", .cb = tray_reset_display_device_config_cb},
-  #endif
-        {.text = "Restart", .cb = tray_restart_cb},
-        {.text = "Quit", .cb = tray_quit_cb},
-        {.text = nullptr}
-      },
-  #ifdef _WIN32
-    .iconPathCount = 5,
-    .allIconPaths = {TRAY_ICON, TRAY_ICON_LOCKED, TRAY_ICON_PLAYING, TRAY_ICON_PAUSING, TRAY_ICON_VIRTUALHID},
-  #else
-    .iconPathCount = 4,
-    .allIconPaths = {TRAY_ICON, TRAY_ICON_LOCKED, TRAY_ICON_PLAYING, TRAY_ICON_PAUSING},
-  #endif
->>>>>>> upstream/master
+  /**
+   * @brief Tray action metadata stored in tray_menu::context.
+   */
+  struct tray_session_action_t {
+    uint32_t session_id;  ///< Launch-session identifier for the target stream.
+    /**
+     * @brief Tray action performed when a connected-client menu item is selected.
+     */
+    enum class type_e {
+      pause,  ///< Pause the target session.
+      resume,  ///< Resume the target session.
+      disconnect,  ///< Disconnect the target session.
+    } type;  ///< Action to perform for the menu item.
   };
 
   static std::mutex tray_menu_mutex;
@@ -419,7 +330,7 @@ namespace system_tray {
     uint32_t session_id = 0,
     bool has_session_actions = false
   ) {
-    if (!tray_initialized) {
+    if (!tray_initialized_state().load()) {
       return;
     }
 
@@ -443,14 +354,22 @@ namespace system_tray {
   static std::string tray_icon_pausing;
   static std::string tray_icon_locked;
   static std::string tray_icon_disconnected;
+  #ifdef _WIN32
+  static std::string tray_icon_virtualhid;
+  #endif
 
   static struct tray tray = {
     .icon = nullptr,
     .tooltip = PROJECT_NAME,
     .cb = tray_left_click_cb,
     .menu = nullptr,
+  #ifdef _WIN32
+    .iconPathCount = 5,
+    .allIconPaths = {nullptr, nullptr, nullptr, nullptr, nullptr},
+  #else
     .iconPathCount = 4,
     .allIconPaths = {nullptr, nullptr, nullptr, nullptr},
+  #endif
   };
 
   /**
@@ -478,6 +397,13 @@ namespace system_tray {
    * @brief Path to the system tray icon used after a client disconnects.
    */
   #define TRAY_ICON_DISCONNECTED tray_icon_disconnected.c_str()
+  #ifdef _WIN32
+    /**
+     * @def TRAY_ICON_VIRTUALHID
+     * @brief Path to the Virtual HID Driver notification icon.
+     */
+    #define TRAY_ICON_VIRTUALHID tray_icon_virtualhid.c_str()
+  #endif
 
   /**
    * @brief Clear notification fields so tray_update does not re-show stale notifications.
@@ -570,6 +496,7 @@ namespace system_tray {
     tray_icon_pausing = web + "images/sunshine-pausing.ico";
     tray_icon_locked = web + "images/sunshine-locked.ico";
     tray_icon_disconnected = web + "images/sunshine-disconnected.ico";
+    tray_icon_virtualhid = web + "images/logo-libvirtualhid.svg";
   #elif defined(__APPLE__) || defined(__MACH__)
     tray_icon_default = web + "images/logo-sunshine-16.png";
     tray_icon_playing = web + "images/sunshine-playing-16.png";
@@ -588,6 +515,9 @@ namespace system_tray {
     tray.allIconPaths[1] = tray_icon_locked.c_str();
     tray.allIconPaths[2] = tray_icon_playing.c_str();
     tray.allIconPaths[3] = tray_icon_pausing.c_str();
+  #ifdef _WIN32
+    tray.allIconPaths[4] = tray_icon_virtualhid.c_str();
+  #endif
     tray.icon = tray.allIconPaths[0];
   }
 
@@ -641,6 +571,10 @@ namespace system_tray {
 
     tray_root_menu.push_back({.text = "Open Sunshine", .cb = tray_open_ui_cb});
     tray_root_menu.push_back({.text = "-"});
+  #ifdef _WIN32
+    tray_root_menu.push_back({.text = "Virtual HID Driver", .submenu = virtualhid_license_menu.data()});
+    tray_root_menu.push_back({.text = "-"});
+  #endif
 
     tray_menu_strings.emplace_back("Connected Clients");
     tray_root_menu.push_back({
@@ -830,7 +764,7 @@ namespace system_tray {
    * @brief Apply tray menu and notification updates on the Qt main thread.
    */
   void process_pending_tray_updates() {
-    if (!tray_initialized || !tray_has_pending.exchange(false)) {
+    if (!tray_initialized_state().load() || !tray_has_pending.exchange(false)) {
       return;
     }
 
@@ -1087,7 +1021,7 @@ namespace system_tray {
       tray.notification_title = "Activate Virtual HID Driver";
       tray.notification_text =
         "Adds Xbox One/Series, DualSense (DS5), Switch Pro, and Generic gamepads beyond ViGEmBus. Actively maintained by LizardByte. Click to activate or buy a license; details remain in the tray menu.";
-      tray.notification_icon = tray.allIconPaths[4];
+      tray.notification_icon = TRAY_ICON_VIRTUALHID;
       tray.notification_cb = []() {
         launch_ui("/troubleshooting#virtualhid-license");
       };
@@ -1187,6 +1121,8 @@ namespace system_tray {
    * @brief Resolve tray icons against the current executable or application bundle.
    */
   void resolve_tray_icon_paths() {
+    configure_tray_icon_paths();
+
   #if defined(_WIN32) || defined(__APPLE__)
     std::optional<int> notification_icon_index;
     if (tray.notification_icon != nullptr) {
@@ -1290,24 +1226,8 @@ namespace system_tray {
     }
   #endif
 
-<<<<<<< HEAD
-  #ifdef __APPLE__
-    configure_tray_icon_paths();
-    tray.allIconPaths[0] = GetResourcePath(TRAY_ICON);
-    tray.allIconPaths[1] = GetResourcePath(TRAY_ICON_LOCKED);
-    tray.allIconPaths[2] = GetResourcePath(TRAY_ICON_PLAYING);
-    tray.allIconPaths[3] = GetResourcePath(TRAY_ICON_PAUSING);
-
-    tray.icon = tray.allIconPaths[0];
-  #else
-    configure_tray_icon_paths();
-  #endif
-
-  #if defined(__linux__) || defined(linux) || defined(__linux) || defined(__FreeBSD__)
-=======
     resolve_tray_icon_paths();
 
->>>>>>> upstream/master
     tray_set_log_callback(qt_log_to_boost);
 
     tray_set_app_info(PROJECT_NAME, PROJECT_NAME, PROJECT_FQDN);
@@ -1326,12 +1246,8 @@ namespace system_tray {
     }
 
     BOOST_LOG(info) << "System tray created"sv;
-<<<<<<< HEAD
-    tray_initialized = true;
     rebuild_tray_root_menu();
     tray_update(&tray);
-=======
->>>>>>> upstream/master
     return 0;
   }
 
@@ -1367,7 +1283,6 @@ namespace system_tray {
   }
 
   void update_tray_playing(std::string app_name) {
-<<<<<<< HEAD
     enqueue_tray_update(tray_pending_kind_e::set_streaming_active, std::move(app_name), true);
   }
 
@@ -1447,94 +1362,16 @@ namespace system_tray {
 
   void clear_pairing_request_state() {
     enqueue_tray_update(tray_pending_kind_e::clear_pairing);
-=======
-    const std::scoped_lock lock(tray_state_mutex());
-    if (!tray_initialized_state().load()) {
-      return;
-    }
-
-    tray.notification_title = nullptr;
-    tray.notification_text = nullptr;
-    tray.notification_cb = nullptr;
-    tray.notification_icon = nullptr;
-    tray.icon = tray.allIconPaths[2];
-    tray_update(&tray);
-    tray.icon = tray.allIconPaths[2];
-    tray.notification_title = "Stream Started";
-
-    static std::string msg = std::format("Streaming started for {}", app_name);
-    tray.notification_text = msg.c_str();
-    tray.tooltip = msg.c_str();
-    tray.notification_icon = tray.allIconPaths[2];
-    tray_update(&tray);
-  }
-
-  void update_tray_pausing(std::string app_name) {
-    const std::scoped_lock lock(tray_state_mutex());
-    if (!tray_initialized_state().load()) {
-      return;
-    }
-
-    tray.notification_title = nullptr;
-    tray.notification_text = nullptr;
-    tray.notification_cb = nullptr;
-    tray.notification_icon = nullptr;
-    tray.icon = tray.allIconPaths[3];
-    tray_update(&tray);
-
-    static std::string msg = std::format("Streaming paused for {}", app_name);
-    tray.icon = tray.allIconPaths[3];
-    tray.notification_title = "Stream Paused";
-    tray.notification_text = msg.c_str();
-    tray.tooltip = msg.c_str();
-    tray.notification_icon = tray.allIconPaths[3];
-    tray_update(&tray);
-  }
-
-  void update_tray_stopped(std::string app_name) {
-    const std::scoped_lock lock(tray_state_mutex());
-    if (!tray_initialized_state().load()) {
-      return;
-    }
-
-    tray.notification_title = nullptr;
-    tray.notification_text = nullptr;
-    tray.notification_cb = nullptr;
-    tray.notification_icon = nullptr;
-    tray.icon = tray.allIconPaths[0];
-    tray_update(&tray);
-
-    static std::string msg = std::format("Application {} successfully stopped", app_name);
-    tray.icon = tray.allIconPaths[0];
-    tray.notification_icon = tray.allIconPaths[0];
-    tray.notification_title = "Application Stopped";
-    tray.notification_text = msg.c_str();
-    tray.tooltip = PROJECT_NAME;
-    tray_update(&tray);
   }
 
   void update_tray_require_pin() {
-    const std::scoped_lock lock(tray_state_mutex());
-    if (!tray_initialized_state().load()) {
-      return;
-    }
-
-    tray.notification_title = nullptr;
-    tray.notification_text = nullptr;
-    tray.notification_cb = nullptr;
-    tray.notification_icon = nullptr;
-    tray.icon = tray.allIconPaths[0];
-    tray_update(&tray);
-    tray.icon = tray.allIconPaths[0];
-    tray.notification_title = "Incoming Pairing Request";
-    tray.notification_text = "Click here to complete the pairing process";
-    tray.notification_icon = tray.allIconPaths[1];
-    tray.tooltip = PROJECT_NAME;
-    tray.notification_cb = []() {
-      launch_ui("/pin");
-    };
-    tray_update(&tray);
->>>>>>> upstream/master
+    const auto &action_key = config::sunshine.flags.test(config::flag::PIN_STDIN)
+                               ? "pairing_request_action_stdin"sv
+                               : "pairing_request_action"sv;
+    enqueue_tray_update(
+      tray_pending_kind_e::notify_pairing,
+      localization::ui_string("troubleshooting", std::string {action_key})
+    );
   }
 
   // Threading functions available on all platforms
