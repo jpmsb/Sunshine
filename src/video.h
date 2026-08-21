@@ -125,10 +125,13 @@ namespace video {
   class avcodec_software_encode_device_t: public platf::avcodec_encode_device_t {
   public:
     /**
-     * @brief Convert a captured image into the encoder input representation.
+     * @brief Convert a host image into the software encoder's working frame.
      *
-     * @param img Image or frame object to read from or populate.
-     * @return Conversion status.
+     * Dummy PipeWire frames may leave CPU pixels unset until the first real
+     * buffer arrives; those frames are treated as a no-op instead of failing.
+     *
+     * @param img Host image to convert.
+     * @return 0 on success, or -1 on failure.
      */
     int convert(platf::img_t &img) override;
 
