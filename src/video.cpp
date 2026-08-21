@@ -205,32 +205,24 @@ namespace video {
    */
   util::Either<avcodec_buffer_t, int> vulkan_init_avcodec_hardware_input_buffer(platf::avcodec_encode_device_t *);
 
-<<<<<<< HEAD
   /**
-   * @brief FFmpeg software encode device used when no hardware frames are required.
+   * @brief Convert a host image into the software encoder's working frame.
+   *
+   * Dummy PipeWire frames may leave CPU pixels unset until the first real
+   * buffer arrives; those frames are treated as a no-op instead of failing.
+   *
+   * @param img Host image to convert.
+   * @return 0 on success, or -1 on failure.
    */
-  class avcodec_software_encode_device_t: public platf::avcodec_encode_device_t {
-  public:
-    /**
-     * @brief Accept a software frame without additional hardware conversion.
-     *
-     * @param img Image or frame object to read from or populate.
-     * @return Conversion status.
-     */
-    int convert(platf::img_t &img) override {
-      // PipeWire (and similar) dummy frames intentionally leave CPU pixels unset until the
-      // first real buffer arrives. Keep the encoder contents instead of failing sws.
-      if (!img.data) {
-        return 0;
-      }
-
-      // If we need to add aspect ratio padding, we need to scale into an intermediate output buffer
-      bool requires_padding = (sw_frame->width != sws_output_frame->width || sw_frame->height != sws_output_frame->height);
-=======
   int avcodec_software_encode_device_t::convert(platf::img_t &img) {
+    // PipeWire (and similar) dummy frames intentionally leave CPU pixels unset until the
+    // first real buffer arrives. Keep the encoder contents instead of failing sws.
+    if (!img.data) {
+      return 0;
+    }
+
     // If we need to add aspect ratio padding, we need to scale into an intermediate output buffer
     bool requires_padding = (sw_frame->width != sws_output_frame->width || sw_frame->height != sws_output_frame->height);
->>>>>>> upstream/master
 
     // Detect the actual capture pixel format. PipeWire-based captures (KWin
     // screencast / XDG portal) deliver NV12 with 1 byte per pixel, while
