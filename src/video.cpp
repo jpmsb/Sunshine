@@ -205,15 +205,6 @@ namespace video {
    */
   util::Either<avcodec_buffer_t, int> vulkan_init_avcodec_hardware_input_buffer(platf::avcodec_encode_device_t *);
 
-  /**
-   * @brief Convert a host image into the software encoder's working frame.
-   *
-   * Dummy PipeWire frames may leave CPU pixels unset until the first real
-   * buffer arrives; those frames are treated as a no-op instead of failing.
-   *
-   * @param img Host image to convert.
-   * @return 0 on success, or -1 on failure.
-   */
   int avcodec_software_encode_device_t::convert(platf::img_t &img) {
     // PipeWire (and similar) dummy frames intentionally leave CPU pixels unset until the
     // first real buffer arrives. Keep the encoder contents instead of failing sws.
