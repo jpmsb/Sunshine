@@ -1017,7 +1017,7 @@ namespace platf {
    *
    * @param name Human-readable name to assign.
    */
-  void set_thread_name(const std::string &name);
+  void set_thread_name(std::string_view name);
 
   void enable_mouse_keys();
 
