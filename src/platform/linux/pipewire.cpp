@@ -139,9 +139,6 @@ namespace pipewire {
      * @brief Drop borrowed frame pointers without freeing PipeWire-owned memory.
      */
     ~img_descriptor_t() override {
-<<<<<<< HEAD
-      data = nullptr;
-=======
       // Only free buffers this image actually owns. The memory-buffer capture
       // path points img->data at the PipeWire staging vector (front_buffer),
       // which is owned by pipewire_t -- deleting it here corrupts the heap.
@@ -150,7 +147,6 @@ namespace pipewire {
       }
       data = nullptr;
       data_owned = false;
->>>>>>> upstream/master
     }
 
     bool data_owned = false;  ///< Whether img->data is owned by this image and must be freed.
@@ -518,13 +514,8 @@ namespace pipewire {
       }
 
       struct spa_buffer *buf = stream_data.current_buffer->buffer;
-<<<<<<< HEAD
       if (buf->n_datas > 0 && buf->datas[0].chunk && buf->datas[0].chunk->size != 0) {
-        auto *img_descriptor = static_cast<egl::img_descriptor_t *>(img);
-=======
-      if (buf->datas[0].chunk->size != 0) {
         auto *img_descriptor = static_cast<img_descriptor_t *>(img);
->>>>>>> upstream/master
         fill_img_metadata(img_descriptor, buf);
         if (buf->datas[0].type == SPA_DATA_DmaBuf) {
           img->data = nullptr;
