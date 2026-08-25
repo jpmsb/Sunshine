@@ -1522,9 +1522,9 @@ editing the `conf` file in a text editor. Use the examples as reference.
     </tr>
     <tr>
         <td>Default</td>
-        <td colspan="2">@code{}
-            (empty - bind to all interfaces)
-            @endcode</td>
+        <td colspan="2">
+            Empty, binds to all interfaces
+            </td>
     </tr>
     <tr>
         <td>Example (IPv4)</td>
@@ -1654,10 +1654,10 @@ editing the `conf` file in a text editor. Use the examples as reference.
     </tr>
     <tr>
         <td>Default</td>
-        <td colspan="2">@code{}
-            (empty - uses built-in defaults: https://localhost, https://127.0.0.1, https://[::1],
-            with configured UI port variants)
-            @endcode</td>
+        <td colspan="2">
+            Empty, uses built-in defaults: https://localhost, https://127.0.0.1, https://[::1],
+            with configured UI port variants
+            </td>
     </tr>
     <tr>
         <td>Example</td>
@@ -2920,6 +2920,40 @@ min_log_level = 2
         <td>Example</td>
         <td colspan="2">@code{}
             amd_enforce_hrd = disabled
+            @endcode</td>
+    </tr>
+</table>
+
+### amd_max_au_size
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Maximum Access Unit (frame) size for rate control, in bits. This is a last-resort
+            control for capping oversized encoded frames that would otherwise exceed Sunshine's
+            four-block FEC capacity and be sent without FEC protection.
+            @note{This option only applies to H.264 and HEVC when using amdvce [encoder](#encoder).
+            AV1 does not support this option.}
+            @note{The FEC ceiling depends on the negotiated packet size and [fec_percentage](#fec_percentage),
+            not the average bitrate or frame rate. The approximate encoded-payload ceiling is
+            `4 * floor(25500 / (100 + fec_percentage)) * (packet_size - 16) * 8` bits, before
+            allowing for the short frame header or codec-header replacements. With 20% FEC and
+            1024-byte packets, 6400000 bits provides conservative headroom.}
+            @warning{Setting this unnecessarily low can reduce image quality, especially for
+            keyframes. Leave it empty unless oversized frames are actually causing FEC to be skipped.}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">
+            Empty, uses encoder default.
+            </td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            amd_max_au_size = 6400000
             @endcode</td>
     </tr>
 </table>
