@@ -680,6 +680,15 @@ namespace kwin {
       screencast.reset();
     }
 
+    /**
+     * @brief Configure the PipeWire stream through the KWin screencast extension.
+     *
+     * @param display_name Display name to capture.
+     * @param out_pipewire_fd PipeWire file descriptor for the stream, or -1 for local context.
+     * @param out_pipewire_node PipeWire node ID, or PW_ID_ANY when using object serial.
+     * @param out_pipewire_objectserial PipeWire object serial for the stream.
+     * @return 0 when the stream was configured successfully.
+     */
     int configure_stream(const std::string &display_name, int &out_pipewire_fd, uint32_t &out_pipewire_node, uint64_t &out_pipewire_objectserial) override {
       screencast = std::make_unique<screencast_t>();
       if (screencast->init(true) < 0) {
