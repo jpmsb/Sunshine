@@ -1006,7 +1006,8 @@ namespace portal {
     const uint32_t ensure_w = width > 0 ? static_cast<uint32_t>(width) : 1u;
     const uint32_t ensure_h = height > 0 ? static_cast<uint32_t>(height) : 1u;
     // Memptr-only: cheap to keep the portal node alive between clients.
-    if (pw->ensure_stream(platf::mem_type_e::system, ensure_w, ensure_h, 60, nullptr, 0, false) < 0) {
+    // ensure_stream expects AVRational after fractional/variable-rate PipeWire support.
+    if (pw->ensure_stream(platf::mem_type_e::system, ensure_w, ensure_h, AVRational {60, 1}, nullptr, 0, false) < 0) {
       BOOST_LOG(warning) << "[portalgrab] Keepalive ensure_stream failed"sv;
       pw->destroy();
       return -1;
