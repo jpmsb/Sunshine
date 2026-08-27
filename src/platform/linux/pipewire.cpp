@@ -380,43 +380,30 @@ namespace pipewire {
                                                  mem_type == platf::mem_type_e::vulkan ||
                                                  (mem_type == platf::mem_type_e::cuda && display_is_nvidia));
         if (use_dmabuf) {
-<<<<<<< HEAD
           for (int i = 0; i < n_dmabuf_infos && n_params < MAX_PARAMS - static_cast<int>(format_map.size()); i++) {
             if (dmabuf_infos[i].n_modifiers > 0 && !dmabuf_infos[i].modifiers) {
               continue;
             }
-            auto format_param = build_format_parameter(&pod_builder, width, height, refresh_rate, dmabuf_infos[i].format, dmabuf_infos[i].modifiers, dmabuf_infos[i].n_modifiers);
+            auto format_param = build_format_parameter(&pod_builder, width, height, target_framerate, dmabuf_infos[i].format, dmabuf_infos[i].modifiers, dmabuf_infos[i].n_modifiers);
             if (!format_param) {
               BOOST_LOG(warning) << "[pipewire] Failed to build DMA-BUF format parameter; stopping DMA-BUF offers"sv;
               break;
             }
             params[n_params++] = format_param;
-=======
-          for (int i = 0; i < n_dmabuf_infos; i++) {
-            auto format_param = build_format_parameter(&pod_builder, width, height, target_framerate, dmabuf_infos[i].format, dmabuf_infos[i].modifiers, dmabuf_infos[i].n_modifiers);
-            params[n_params] = format_param;
-            n_params++;
->>>>>>> upstream/master
           }
         }
 
         // Add fallback for memptr
         for (const auto &fmt : format_map) {
-<<<<<<< HEAD
           if (n_params >= MAX_PARAMS) {
             break;
           }
-          auto format_param = build_format_parameter(&pod_builder, width, height, refresh_rate, fmt.pw_format, nullptr, 0);
+          auto format_param = build_format_parameter(&pod_builder, width, height, target_framerate, fmt.pw_format, nullptr, 0);
           if (!format_param) {
             BOOST_LOG(warning) << "[pipewire] Failed to build memptr format parameter"sv;
             break;
           }
           params[n_params++] = format_param;
-=======
-          auto format_param = build_format_parameter(&pod_builder, width, height, target_framerate, fmt.pw_format, nullptr, 0);
-          params[n_params] = format_param;
-          n_params++;
->>>>>>> upstream/master
         }
 
         if (n_params <= 0) {
@@ -975,7 +962,6 @@ namespace pipewire {
       }
 
       // Start PipeWire now so format negotiation can proceed before capture start
-<<<<<<< HEAD
       // Prefer portal-reported size when present; otherwise prefer 1x1 so the CHOICE_RANGE
       // lets the compositor pick the real window size (avoid forcing 1920x1080).
       const uint32_t ensure_w = width > 0 ? static_cast<uint32_t>(width) : 1u;
@@ -983,10 +969,7 @@ namespace pipewire {
       // Drop competing consumers (e.g. portal keepalive) immediately before connect so
       // DMA-BUF can be negotiated; ensure_stream is a no-op once the stream exists.
       on_before_ensure_stream();
-      if (pipewire.ensure_stream(mem_type, ensure_w, ensure_h, framerate, dmabuf_infos.data(), n_dmabuf_infos, display_is_nvidia) < 0) {
-=======
-      if (pipewire.ensure_stream(mem_type, width, height, target_framerate, dmabuf_infos.data(), n_dmabuf_infos, display_is_nvidia) < 0) {
->>>>>>> upstream/master
+      if (pipewire.ensure_stream(mem_type, ensure_w, ensure_h, target_framerate, dmabuf_infos.data(), n_dmabuf_infos, display_is_nvidia) < 0) {
         BOOST_LOG(error) << "[pipewire] Failed to ensure pipewire stream. pipewire_t::init() failed.";
         return -1;
       }
@@ -1133,12 +1116,8 @@ namespace pipewire {
     platf::capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) override {
       auto next_frame = std::chrono::steady_clock::now();
 
-<<<<<<< HEAD
       on_before_ensure_stream();
-      if (pipewire.ensure_stream(mem_type, width, height, framerate, dmabuf_infos.data(), n_dmabuf_infos, display_is_nvidia) < 0) {
-=======
       if (pipewire.ensure_stream(mem_type, width, height, target_framerate, dmabuf_infos.data(), n_dmabuf_infos, display_is_nvidia) < 0) {
->>>>>>> upstream/master
         BOOST_LOG(error) << "[pipewire] Failed to ensure pipewire stream. capture() failed with error.";
         return platf::capture_e::error;
       }
@@ -1585,16 +1564,12 @@ namespace pipewire {
     std::optional<std::uint64_t> last_pts {};
     std::optional<std::uint64_t> last_seq {};
     std::uint64_t sequence {};
-<<<<<<< HEAD
-    uint32_t framerate;
+    AVRational target_framerate;
     /// Pending PipeWire size while the window is being resized; reinit only after it stabilizes.
     std::optional<std::pair<int, int>> pending_resolution_;
     std::chrono::steady_clock::time_point pending_resolution_since_ {};
     static constexpr std::chrono::milliseconds resolution_reinit_debounce_ {300};
     bool resolution_reinit_pending_ = false;  ///< True when capture requested encoder-only reinit.
-=======
-    AVRational target_framerate;
->>>>>>> upstream/master
 
   protected:
     // Allow subclasses to access for pipewire requirements setup and stream dead checks
