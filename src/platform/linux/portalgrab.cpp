@@ -1323,6 +1323,15 @@ namespace portal {
       dbus.reset();
     }
 
+    /**
+     * @brief Configure the PipeWire stream through the XDG desktop portal.
+     *
+     * @param display_name Display name to capture.
+     * @param out_pipewire_fd PipeWire file descriptor for the stream, or -1 for local context.
+     * @param out_pipewire_node PipeWire node ID, or PW_ID_ANY when using object serial.
+     * @param out_pipewire_object_serial PipeWire object serial for the stream.
+     * @return 0 when the stream was configured successfully.
+     */
     int configure_stream(const std::string &display_name, int &out_pipewire_fd, uint32_t &out_pipewire_node, uint64_t &out_pipewire_object_serial [[maybe_unused]]) override {
       if (!dbus) {
         BOOST_LOG(error) << "[portalgrab] Missing portal D-Bus client. portal_t setup failed.";
