@@ -190,7 +190,6 @@ namespace nvhttp {
   std::string last_verified_client_cert;  ///< Last client certificate accepted by the TLS verify callback.  // NOSONAR(cpp:S5421): intentionally mutable global
   std::string last_verified_client_name;  ///< Friendly name of last client certificate accepted by the TLS verify callback. // NOSONAR(cpp:S5421): intentionally mutable global
 
-  constexpr auto PAIR_SESSION_TIMEOUT = std::chrono::minutes(5);  ///< Maximum lifetime of an in-progress pairing session.
   constexpr std::size_t MAX_PAIR_SESSIONS = 16;  ///< Maximum concurrent pairing sessions.
   constexpr std::size_t MAX_PAIR_SESSIONS_PER_ADDRESS = 3;  ///< Maximum pairing sessions per remote address.
   constexpr std::size_t MAX_CLIENT_NAME_LENGTH = 128;  ///< Maximum length for a paired client display name.

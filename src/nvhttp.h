@@ -299,7 +299,6 @@ namespace nvhttp {
    * @param pairing_id Unguessable identifier of the pairing request to approve.
    * @param pin The user supplied pin.
    * @param name The user supplied name.
-   * @param name The user supplied name.
    * @return `true` if the pin is correct, `false` otherwise.
    * @examples
    * bool pin_status = nvhttp::pin("0123456789abcdef0123456789abcdef", "1234", "laptop");
