@@ -2161,17 +2161,6 @@ namespace confighttp {
       const std::string name = input_tree.value("name", "");
       const std::string pairing_id = input_tree.value("pairing_id", "");
       const std::string pin = input_tree.value("pin", "");
-<<<<<<< HEAD
-      const std::string unique_id = input_tree.value("uniqueid", "");
-
-      int _pin = 0;
-      _pin = std::stoi(pin);
-      if (_pin < 0 || _pin > 9999) {
-        bad_request(response, request, "PIN must be between 0000 and 9999");
-      }
-
-      output_tree["status"] = nvhttp::pin(pin, name, unique_id);
-=======
       if (!nvhttp::is_valid_pairing_id(pairing_id)) {
         bad_request(response, request, "pairing_id must contain exactly 32 hexadecimal characters");
         return;
@@ -2186,7 +2175,6 @@ namespace confighttp {
       }
 
       output_tree["status"] = nvhttp::pin(pairing_id, pin, name);
->>>>>>> upstream/master
       send_response(response, output_tree);
     } catch (std::exception &e) {
       BOOST_LOG(warning) << "SavePin: "sv << e.what();

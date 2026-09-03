@@ -4,13 +4,10 @@
  */
 
 // standard includes
-<<<<<<< HEAD
 #include <chrono>
-#include <format>
-=======
 #include <cstring>
+#include <format>
 #include <fstream>
->>>>>>> upstream/master
 #include <future>
 #include <optional>
 #include <queue>

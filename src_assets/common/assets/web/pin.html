@@ -95,22 +95,8 @@
     inject: ['i18n'],
     data() {
       return {
-<<<<<<< HEAD
         pinStdin: false,
         configLoaded: false,
-      }
-    },
-    mounted() {
-      fetch("./api/config")
-        .then((response) => response.json())
-        .then((config) => {
-          this.pinStdin = config.pin_stdin === true
-          this.configLoaded = true
-        })
-        .catch(() => {
-          this.configLoaded = true
-        })
-=======
         name: '',
         pendingPairings: [],
         pin: '',
@@ -120,12 +106,26 @@
       };
     },
     mounted() {
-      this.loadPendingPairings();
-      this.refreshTimer = window.setInterval(() => this.loadPendingPairings(), 2000);
+      fetch("./api/config")
+        .then((response) => response.json())
+        .then((config) => {
+          this.pinStdin = config.pin_stdin === true;
+          this.configLoaded = true;
+          if (!this.pinStdin) {
+            this.loadPendingPairings();
+            this.refreshTimer = window.setInterval(() => this.loadPendingPairings(), 2000);
+          }
+        })
+        .catch(() => {
+          this.configLoaded = true;
+          if (!this.pinStdin) {
+            this.loadPendingPairings();
+            this.refreshTimer = window.setInterval(() => this.loadPendingPairings(), 2000);
+          }
+        });
     },
     beforeUnmount() {
       window.clearInterval(this.refreshTimer);
->>>>>>> upstream/master
     },
     methods: {
       /**

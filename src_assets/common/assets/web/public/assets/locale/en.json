@@ -555,14 +555,11 @@
     "select_pairing": "Select the device requesting approval",
     "select_pairing_required": "Select the device you intend to pair",
     "send": "Send",
-<<<<<<< HEAD
     "stdin_hint": "Look for \"Please insert pin:\" in the terminal where Sunshine is running.",
     "stdin_msg": "Sunshine was started with the -0 flag. Enter the PIN shown in Moonlight in the Sunshine terminal. Web UI pairing is unavailable in this mode.",
     "stdin_title": "Terminal pairing mode",
-=======
     "unknown_address": "Unknown address",
     "unknown_device": "Unknown device",
->>>>>>> upstream/master
     "warning_msg": "Make sure you have access to the client you are pairing with. This software can give total control to your computer, so be careful!"
   },
   "resource_card": {

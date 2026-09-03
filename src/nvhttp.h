@@ -7,10 +7,7 @@
 
 // standard includes
 #include <chrono>
-<<<<<<< HEAD
-=======
 #include <cstddef>
->>>>>>> upstream/master
 #include <string>
 #include <string_view>
 #include <vector>
@@ -150,14 +147,9 @@ namespace nvhttp {
      * @brief used as a security measure to prevent out of order calls
      */
     PAIR_PHASE last_phase = PAIR_PHASE::NONE;
-<<<<<<< HEAD
-
-    std::chrono::steady_clock::time_point created_at = std::chrono::steady_clock::now();  ///< Time this pairing session was created.
+    bool failed = false;  ///< Whether protocol validation failed and the session must be removed.
     std::string client_address = {};  ///< Normalized remote address that initiated pairing.
     uint16_t client_remote_port = 0;  ///< Remote TCP port used during HTTP pairing.
-=======
-    bool failed = false;  ///< Whether protocol validation failed and the session must be removed.
->>>>>>> upstream/master
   };
 
   /**
@@ -307,17 +299,13 @@ namespace nvhttp {
    * @param pairing_id Unguessable identifier of the pairing request to approve.
    * @param pin The user supplied pin.
    * @param name The user supplied name.
-   * @param unique_id Optional Moonlight client unique ID for the pending pairing session.
+   * @param name The user supplied name.
    * @return `true` if the pin is correct, `false` otherwise.
    * @examples
    * bool pin_status = nvhttp::pin("0123456789abcdef0123456789abcdef", "1234", "laptop");
    * @examples_end
    */
-<<<<<<< HEAD
-  bool pin(std::string pin, std::string name, const std::string &unique_id = {});
-=======
   bool pin(std::string_view pairing_id, std::string pin, std::string name);
->>>>>>> upstream/master
 
   /**
    * @brief Remove single client.
@@ -400,7 +388,6 @@ namespace nvhttp {
 
 #ifdef SUNSHINE_TESTS
   /**
-<<<<<<< HEAD
    * @brief Seed data used to insert a paired client during unit tests.
    */
   struct test_client_seed_t {
@@ -424,7 +411,8 @@ namespace nvhttp {
    * @brief Persist and reload paired clients from disk for unit tests.
    */
   void test_reload_clients_from_disk();
-=======
+
+  /**
    * @brief Test-only accessors for paired-client authorization state.
    */
   namespace test_support {
@@ -456,6 +444,5 @@ namespace nvhttp {
      */
     void reload_client_state();
   }  // namespace test_support
->>>>>>> upstream/master
 #endif
 }  // namespace nvhttp

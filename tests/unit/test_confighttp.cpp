@@ -20,22 +20,14 @@
 #include <thread>
 #include <utility>
 
-<<<<<<< HEAD
-// lib imports
-#include <nlohmann/json.hpp>
-=======
 // lib includes
->>>>>>> upstream/master
+#include <nlohmann/json.hpp>
 #include <Simple-Web-Server/client_https.hpp>
 #include <Simple-Web-Server/crypto.hpp>
 #include <Simple-Web-Server/server_https.hpp>
 
-<<<<<<< HEAD
-// local imports
-#include <src/assets_path.h>
-=======
 // local includes
->>>>>>> upstream/master
+#include <src/assets_path.h>
 #include <src/config.h>
 #include <src/confighttp.h>
 #include <src/confighttp_validation.h>
@@ -417,12 +409,9 @@ protected:
     config::sunshine.flags[config::flag::PIN_STDIN] = saved_pin_stdin;
     config::sunshine.config_file = saved_config_file;
     config::sunshine.csrf_allowed_origins = saved_csrf_allowed_origins;
-<<<<<<< HEAD
     config::nvhttp.file_state = saved_file_state;
     nvhttp::erase_all_clients();
-=======
     nvhttp::expire_pair_sessions(std::chrono::steady_clock::time_point::max());
->>>>>>> upstream/master
 
     // Clean up test HTML file from the web assets directory
     if (std::filesystem::exists(web_dir_test_file)) {

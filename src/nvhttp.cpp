@@ -6,21 +6,15 @@
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS
 
 // standard includes
-<<<<<<< HEAD
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <iomanip>
-#include <sstream>
-=======
-#include <algorithm>
-#include <chrono>
-#include <filesystem>
-#include <format>
 #include <mutex>
->>>>>>> upstream/master
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -201,6 +195,8 @@ namespace nvhttp {
   constexpr std::size_t MAX_PAIR_SESSIONS_PER_ADDRESS = 3;  ///< Maximum pairing sessions per remote address.
   constexpr std::size_t MAX_CLIENT_NAME_LENGTH = 128;  ///< Maximum length for a paired client display name.
 
+  void expire_pair_sessions_unlocked(std::chrono::steady_clock::time_point now);
+
   /**
    * @brief Return the current UTC time formatted as ISO 8601.
    *
@@ -221,43 +217,14 @@ namespace nvhttp {
   }
 
   /**
-   * @brief Return whether a pairing session is waiting for a PIN response.
-   *
-   * @param sess Pairing session to inspect.
-   * @return True when the session has a pending async PIN response.
-   */
-  bool pair_session_response_ready(const pair_session_t &sess) {
-    if (sess.async_insert_pin.response.has_left()) {
-      return static_cast<bool>(sess.async_insert_pin.response.left());
-    }
-    if (sess.async_insert_pin.response.has_right()) {
-      return static_cast<bool>(sess.async_insert_pin.response.right());
-    }
-    return false;
-  }
-
-  /**
-   * @brief Remove expired pairing sessions.
-   */
-  void prune_pair_sessions() {
-    const auto now = std::chrono::steady_clock::now();
-    for (auto it = map_id_sess.begin(); it != map_id_sess.end();) {
-      if (now - it->second.created_at > PAIR_SESSION_TIMEOUT) {
-        it = map_id_sess.erase(it);
-      } else {
-        ++it;
-      }
-    }
-  }
-
-  /**
    * @brief Return whether a new pairing session should be rejected for rate limiting.
    *
    * @param client_address Normalized remote address initiating pairing.
    * @return True when the pairing request should be rejected.
    */
   bool pair_session_rate_limited(const std::string &client_address) {
-    prune_pair_sessions();
+    std::scoped_lock lock(map_id_sess_mutex);
+    expire_pair_sessions_unlocked(std::chrono::steady_clock::now());
 
     if (map_id_sess.size() >= MAX_PAIR_SESSIONS) {
       return true;
@@ -269,7 +236,7 @@ namespace nvhttp {
 
     std::size_t count = 0;
     for (const auto &[_, sess] : map_id_sess) {
-      if (sess.client_address == client_address) {
+      if (sess.async_insert_pin.address == client_address) {
         ++count;
       }
     }
@@ -546,37 +513,27 @@ namespace nvhttp {
    *
    * @param name Human-readable name to assign.
    * @param cert Certificate data or object used by the operation.
-<<<<<<< HEAD
    * @param client_address Remote address observed during pairing.
    * @param client_remote_port Remote TCP port observed during pairing.
-   */
-  void add_authorized_client(const std::string &name, std::string &&cert, const std::string &client_address, uint16_t client_remote_port) {
-    client_t &client = client_root;
-=======
    * @return Persistent UUID for the added client, or an empty string when the certificate is invalid.
    */
-  std::string add_authorized_client(const std::string &name, std::string &&cert) {
+  std::string add_authorized_client(const std::string &name, std::string &&cert, const std::string &client_address = {}, uint16_t client_remote_port = 0) {
     auto canonical_certificate = canonical_certificate_pem(cert);
     if (canonical_certificate.empty()) {
       return {};
     }
 
->>>>>>> upstream/master
     named_cert_t named_cert;
     named_cert.name = name;
     named_cert.cert = std::move(canonical_certificate);
     named_cert.uuid = uuid_util::uuid_t::generate().string();
-<<<<<<< HEAD
     named_cert.paired_at = current_utc_iso8601();
     named_cert.last_address = client_address;
     named_cert.last_port = client_remote_port;
-    client.named_devices.emplace_back(named_cert);
-=======
 
     std::lock_guard lock {client_auth_mutex};
     client_root.named_devices.emplace_back(std::move(named_cert));
     rebuild_client_cert_chain();
->>>>>>> upstream/master
 
     if (!config::sunshine.flags[config::flag::FRESH_STATE]) {
       save_state();
@@ -982,11 +939,7 @@ namespace nvhttp {
     auto verify = crypto::verify256(crypto::x509(client.cert), secret, sign);
     if (same_hash && verify) {
       // The client is now successfully paired and will be authorized to connect
-<<<<<<< HEAD
-      add_authorized_client(client.name, std::move(client.cert), sess.client_address, sess.client_remote_port);
-=======
-      tree.put("root.paired", add_authorized_client(client.name, std::move(client.cert)).empty() ? 0 : 1);
->>>>>>> upstream/master
+      tree.put("root.paired", add_authorized_client(client.name, std::move(client.cert), sess.client_address, sess.client_remote_port).empty() ? 0 : 1);
     } else {
       tree.put("root.paired", 0);
     }
@@ -1072,7 +1025,6 @@ namespace nvhttp {
   template<class T>
   void pair(std::shared_ptr<typename SimpleWeb::ServerBase<T>::Response> response, std::shared_ptr<typename SimpleWeb::ServerBase<T>::Request> request) {
     print_req<T>(request);
-    prune_pair_sessions();
 
     const auto args = request->parse_query_string();
 
@@ -1099,7 +1051,6 @@ namespace nvhttp {
     if (it = args.find("phrase"); it != std::end(args)) {
       if (it->second == "getservercert"sv) {
         const auto client_address = net::addr_to_normalized_string(request->remote_endpoint().address());
-        prune_pair_sessions();
         if (pair_session_rate_limited(client_address)) {
           tree.put("root.<xmlattr>.status_code", 429);
           tree.put("root.<xmlattr>.status_message", "Too many pairing sessions");
@@ -1110,25 +1061,13 @@ namespace nvhttp {
 
         sess.client.uniqueID = uniqID;
         sess.client.cert = util::from_hex_vec(get_arg(args, "clientcert"), true);
-<<<<<<< HEAD
-        sess.client_address = client_address;
-        sess.client_remote_port = request->remote_endpoint().port();
-        sess.created_at = std::chrono::steady_clock::now();
-
-        BOOST_LOG(debug) << "Pairing client certificate received ("sv << sess.client.cert.size() << " bytes)"sv;
-        auto ptr = map_id_sess.insert_or_assign(sess.client.uniqueID, std::move(sess)).first;
-
-        ptr->second.async_insert_pin.salt = std::move(get_arg(args, "salt"));
-#if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
-        system_tray::notify_pairing_request(client_address, static_cast<uint16_t>(config::sunshine.port + PORT_HTTPS));
-#endif
-        if (config::sunshine.flags[config::flag::PIN_STDIN]) {
-=======
         sess.async_insert_pin.salt = get_arg(args, "salt");
         sess.async_insert_pin.device_name = get_arg(args, "devicename");
-        sess.async_insert_pin.address = net::addr_to_normalized_string(request->remote_endpoint().address());
+        sess.async_insert_pin.address = client_address;
+        sess.client_address = client_address;
+        sess.client_remote_port = request->remote_endpoint().port();
 
-        BOOST_LOG(debug) << sess.client.cert;
+        BOOST_LOG(debug) << "Pairing client certificate received ("sv << sess.client.cert.size() << " bytes)"sv;
         const bool pin_stdin = config::sunshine.flags[config::flag::PIN_STDIN];
         if (!pin_stdin) {
           sess.async_insert_pin.response = response;
@@ -1151,7 +1090,6 @@ namespace nvhttp {
         }
 
         if (pin_stdin) {
->>>>>>> upstream/master
           std::string pin;
 
           std::cout << "Please insert pin: "sv;
@@ -1173,14 +1111,10 @@ namespace nvhttp {
           }
           return;
         } else {
-<<<<<<< HEAD
-          ptr->second.async_insert_pin.response = std::move(response);
-
-=======
 #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
+          system_tray::notify_pairing_request(client_address, static_cast<uint16_t>(config::sunshine.port + PORT_HTTPS));
           system_tray::update_tray_require_pin();
 #endif
->>>>>>> upstream/master
           fg.disable();
           return;
         }
@@ -1221,83 +1155,6 @@ namespace nvhttp {
     }
   }
 
-<<<<<<< HEAD
-  bool pin(std::string pin, std::string name, const std::string &unique_id) {
-    pt::ptree tree;
-    prune_pair_sessions();
-
-    if (map_id_sess.empty()) {
-      return false;
-    }
-
-    pair_session_t *target_sess = nullptr;
-
-    if (!unique_id.empty()) {
-      const auto sess_it = map_id_sess.find(unique_id);
-      if (sess_it == std::end(map_id_sess)) {
-        return false;
-      }
-      target_sess = &sess_it->second;
-    } else {
-      pair_session_t *most_recent = nullptr;
-      auto most_recent_time = std::chrono::steady_clock::time_point::min();
-
-      for (auto &[_, sess] : map_id_sess) {
-        if (!pair_session_response_ready(sess)) {
-          continue;
-        }
-
-        if (sess.created_at >= most_recent_time) {
-          most_recent_time = sess.created_at;
-          most_recent = &sess;
-        }
-      }
-
-      if (!most_recent) {
-        return false;
-      }
-
-      target_sess = most_recent;
-    }
-
-    if (!pair_session_response_ready(*target_sess)) {
-      return false;
-    }
-
-    // ensure pin is 4 digits
-    if (pin.size() != 4) {
-      tree.put("root.paired", 0);
-      tree.put("root.<xmlattr>.status_code", 400);
-      tree.put(
-        "root.<xmlattr>.status_message",
-        std::format("Pin must be 4 digits, {} provided", pin.size())
-      );
-      return false;
-    }
-
-    // ensure all pin characters are numeric
-    if (!std::all_of(pin.begin(), pin.end(), ::isdigit)) {
-      tree.put("root.paired", 0);
-      tree.put("root.<xmlattr>.status_code", 400);
-      tree.put("root.<xmlattr>.status_message", "Pin must be numeric");
-      return false;
-    }
-
-    getservercert(*target_sess, tree, pin);
-    target_sess->client.name = name;
-
-    // response to the request for pin
-    std::ostringstream data;
-    pt::write_xml(data, tree);
-
-    auto &async_response = target_sess->async_insert_pin.response;
-    if (async_response.has_left() && async_response.left()) {
-      async_response.left()->write(data.str());
-    } else if (async_response.has_right() && async_response.right()) {
-      async_response.right()->write(data.str());
-    } else {
-      return false;
-=======
   bool pin(const std::string_view pairing_id, std::string pin, std::string name) {
     if (!is_valid_pairing_id(pairing_id) || !is_valid_pairing_pin(pin) || !is_valid_pairing_name(name)) {
       return false;
@@ -1317,7 +1174,6 @@ namespace nvhttp {
     getservercert(sess, tree, pin);
     if (!sess.failed) {
       sess.client.name = std::move(name);
->>>>>>> upstream/master
     }
 
     const bool response_written = write_pairing_response(sess, tree);

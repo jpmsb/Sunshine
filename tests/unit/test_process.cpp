@@ -9,13 +9,9 @@
 #include <filesystem>
 #include <fstream>
 
-<<<<<<< HEAD
-// local imports
+// local includes
 #include <src/assets_path.h>
 #include <src/platform/common.h>
-=======
-// local includes
->>>>>>> upstream/master
 #include <src/process.h>
 
 namespace fs = std::filesystem;
