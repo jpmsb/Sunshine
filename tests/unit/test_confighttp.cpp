@@ -7,7 +7,7 @@
  * verify that the confighttp functions work correctly end-to-end.
  */
 
-// test imports
+// test includes
 #include "../tests_common.h"
 
 // standard includes
@@ -20,14 +20,22 @@
 #include <thread>
 #include <utility>
 
+<<<<<<< HEAD
 // lib imports
 #include <nlohmann/json.hpp>
+=======
+// lib includes
+>>>>>>> upstream/master
 #include <Simple-Web-Server/client_https.hpp>
 #include <Simple-Web-Server/crypto.hpp>
 #include <Simple-Web-Server/server_https.hpp>
 
+<<<<<<< HEAD
 // local imports
 #include <src/assets_path.h>
+=======
+// local includes
+>>>>>>> upstream/master
 #include <src/config.h>
 #include <src/confighttp.h>
 #include <src/confighttp_validation.h>
@@ -117,6 +125,7 @@ protected:
 
   void SetUp() override {
     BaseTest::SetUp();
+    nvhttp::expire_pair_sessions(std::chrono::steady_clock::time_point::max());
     confighttp::set_virtual_input_license_status_provider_for_testing([]() {
       lvh::LicenseStatus license;
       license.service_available = true;
@@ -364,6 +373,9 @@ protected:
     server->resource["^/virtual-input-status-test$"]["GET"] = confighttp::getVirtualInputStatus;
     server->resource["^/virtual-input-license-test$"]["GET"] = confighttp::getVirtualInputLicense;
     server->resource["^/virtual-input-license-test$"]["POST"] = confighttp::updateVirtualInputLicense;
+    server->resource["^/pairing-test$"]["DELETE"] = confighttp::cancelPairing;
+    server->resource["^/pairing-test$"]["GET"] = confighttp::getPendingPairings;
+    server->resource["^/pairing-test$"]["POST"] = confighttp::savePin;
 
     // Start server
     server_thread = std::jthread([this]() {
@@ -405,8 +417,12 @@ protected:
     config::sunshine.flags[config::flag::PIN_STDIN] = saved_pin_stdin;
     config::sunshine.config_file = saved_config_file;
     config::sunshine.csrf_allowed_origins = saved_csrf_allowed_origins;
+<<<<<<< HEAD
     config::nvhttp.file_state = saved_file_state;
     nvhttp::erase_all_clients();
+=======
+    nvhttp::expire_pair_sessions(std::chrono::steady_clock::time_point::max());
+>>>>>>> upstream/master
 
     // Clean up test HTML file from the web assets directory
     if (std::filesystem::exists(web_dir_test_file)) {
@@ -421,6 +437,23 @@ protected:
 
   static std::string create_auth_header(const std::string &username, const std::string &password) {
     return "Basic " + SimpleWeb::Crypto::Base64::encode(username + ":" + password);
+  }
+
+  /**
+   * @brief Insert a test pairing request into the production pending-session registry.
+   *
+   * @return Unguessable approval identifier assigned to the request.
+   */
+  static std::string insert_pending_pairing() {
+    nvhttp::pair_session_t session;
+    session.client.uniqueID = "rest-api-client";
+    session.async_insert_pin.salt = "ff5dc6eda99339a8a0793e216c4257c4";
+    session.async_insert_pin.device_name = "REST client";
+    session.async_insert_pin.address = "192.0.2.30";
+
+    std::string pairing_id;
+    EXPECT_EQ(nvhttp::insert_pair_session(std::move(session), pairing_id), nvhttp::pair_session_insert_e::ADDED);
+    return pairing_id;
   }
 
   static void assert_security_headers(const std::shared_ptr<SimpleWeb::Client<SimpleWeb::HTTPS>::Response> &response) {
@@ -516,6 +549,7 @@ INSTANTIATE_TEST_SUITE_P(
     endpoint_request_t {"Page", "GET", "/page-test", ""},
     endpoint_request_t {"CsrfToken", "GET", "/csrf-token-test", ""},
     endpoint_request_t {"BrowseDirectory", "GET", "/browse-test", ""},
+    endpoint_request_t {"PairingList", "GET", "/pairing-test", ""},
     endpoint_request_t {"VirtualInputStatus", "GET", "/virtual-input-status-test", ""},
     endpoint_request_t {"VirtualInputLicense", "GET", "/virtual-input-license-test", ""},
     endpoint_request_t {"VirtualInputLicenseUpdate", "POST", "/virtual-input-license-test", R"({"action":"validate"})"}
@@ -565,6 +599,113 @@ INSTANTIATE_TEST_SUITE_P(
   ),
   invalid_license_request_name
 );
+
+TEST_F(ConfigHttpTest, PairingMutationsRejectUnauthenticatedRestRequests) {
+  SimpleWeb::CaseInsensitiveMultimap headers;
+  headers.emplace("Content-Type", "application/json");
+
+  const auto post_response = client->request(
+    "POST",
+    "/pairing-test",
+    R"({"pairing_id":"0123456789abcdef0123456789abcdef","pin":"1234","name":"Client"})",
+    headers
+  );
+  EXPECT_EQ(post_response->status_code, "401 Unauthorized");
+
+  const auto delete_response = client->request(
+    "DELETE",
+    "/pairing-test",
+    R"({"pairing_id":"0123456789abcdef0123456789abcdef"})",
+    headers
+  );
+  EXPECT_EQ(delete_response->status_code, "401 Unauthorized");
+}
+
+TEST_F(ConfigHttpTest, PairingMutationsRejectCrossOriginRestRequestsWithoutCsrfToken) {
+  const std::string pairing_id = insert_pending_pairing();
+  SimpleWeb::CaseInsensitiveMultimap headers;
+  headers.emplace("Authorization", create_auth_header("testuser", "testpass"));
+  headers.emplace("Content-Type", "application/json");
+  headers.emplace("Origin", "https://example.invalid");
+
+  const auto post_response = client->request(
+    "POST",
+    "/pairing-test",
+    nlohmann::json {
+      {"pairing_id", pairing_id},
+      {"pin", "1234"},
+      {"name", "Client"},
+    }
+      .dump(),
+    headers
+  );
+  EXPECT_EQ(post_response->status_code, "400 Bad Request");
+  EXPECT_TRUE(post_response->content.string().contains("Missing CSRF token"));
+
+  const auto delete_response = client->request(
+    "DELETE",
+    "/pairing-test",
+    nlohmann::json {{"pairing_id", pairing_id}}.dump(),
+    headers
+  );
+  EXPECT_EQ(delete_response->status_code, "400 Bad Request");
+  EXPECT_TRUE(delete_response->content.string().contains("Missing CSRF token"));
+  EXPECT_EQ(nvhttp::get_pending_pairings().size(), 1);
+}
+
+TEST_F(ConfigHttpTest, PairingRestApiListsAuthenticatedPendingRequests) {
+  const std::string pairing_id = insert_pending_pairing();
+  SimpleWeb::CaseInsensitiveMultimap headers;
+  headers.emplace("Authorization", create_auth_header("testuser", "testpass"));
+
+  const auto response = client->request("GET", "/pairing-test", "", headers);
+  ASSERT_EQ(response->status_code, "200 OK");
+  const auto body = nlohmann::json::parse(response->content.string());
+  ASSERT_EQ(body.at("pairings").size(), 1);
+  EXPECT_EQ(body.at("pairings").front().at("id"), pairing_id);
+  EXPECT_EQ(body.at("pairings").front().at("name"), "REST client");
+  EXPECT_EQ(body.at("pairings").front().at("address"), "192.0.2.30");
+}
+
+TEST_F(ConfigHttpTest, PairingRestApiRejectsMalformedFieldsWithoutConsumingRequest) {
+  const std::string pairing_id = insert_pending_pairing();
+  const std::array invalid_requests {
+    nlohmann::json {{"pairing_id", "not-a-pairing-id"}, {"pin", "1234"}, {"name", "Client"}},
+    nlohmann::json {{"pairing_id", pairing_id}, {"pin", "123"}, {"name", "Client"}},
+    nlohmann::json {{"pairing_id", pairing_id}, {"pin", "12a4"}, {"name", "Client"}},
+    nlohmann::json {{"pairing_id", pairing_id}, {"pin", "1234"}, {"name", ""}},
+    nlohmann::json {{"pairing_id", pairing_id}, {"pin", "1234"}, {"name", std::string(nvhttp::MAX_PAIRING_CLIENT_NAME_SIZE + 1, 'a')}},
+  };
+
+  SimpleWeb::CaseInsensitiveMultimap headers;
+  headers.emplace("Authorization", create_auth_header("testuser", "testpass"));
+  headers.emplace("Content-Type", "application/json");
+  for (const auto &request : invalid_requests) {
+    const auto response = client->request("POST", "/pairing-test", request.dump(), headers);
+    EXPECT_EQ(response->status_code, "400 Bad Request");
+  }
+
+  const auto pending = nvhttp::get_pending_pairings();
+  ASSERT_EQ(pending.size(), 1);
+  EXPECT_EQ(pending.front().id, pairing_id);
+}
+
+TEST_F(ConfigHttpTest, PairingRestApiCancelsOnlyExplicitRequest) {
+  const std::string pairing_id = insert_pending_pairing();
+  SimpleWeb::CaseInsensitiveMultimap headers;
+  headers.emplace("Authorization", create_auth_header("testuser", "testpass"));
+  headers.emplace("Content-Type", "application/json");
+
+  const auto response = client->request(
+    "DELETE",
+    "/pairing-test",
+    nlohmann::json {{"pairing_id", pairing_id}}.dump(),
+    headers
+  );
+  ASSERT_EQ(response->status_code, "200 OK");
+  EXPECT_TRUE(nlohmann::json::parse(response->content.string()).at("status").get<bool>());
+  EXPECT_TRUE(nvhttp::get_pending_pairings().empty());
+}
 
 // Test: confighttp::authenticate() rejects requests without auth header
 TEST_F(ConfigHttpTest, AuthenticateRejectsNoAuth) {
