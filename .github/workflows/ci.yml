@@ -224,6 +224,8 @@ jobs:
         include:
           - name: FreeBSD-amd64
             coverage: true
+          - name: FreeBSD-aarch64
+            coverage: true
           - name: Linux-AppImage
             coverage: true
           - name: Archlinux
