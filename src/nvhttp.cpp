@@ -209,7 +209,6 @@ namespace nvhttp {
   std::string last_verified_client_cert;  ///< Last client certificate accepted by the TLS verify callback.  // NOSONAR(cpp:S5421): intentionally mutable global
   std::string last_verified_client_name;  ///< Friendly name of last client certificate accepted by the TLS verify callback. // NOSONAR(cpp:S5421): intentionally mutable global
 
-  constexpr std::size_t MAX_PAIR_SESSIONS = 16;  ///< Maximum concurrent pairing sessions.
   constexpr std::size_t MAX_PAIR_SESSIONS_PER_ADDRESS = 3;  ///< Maximum pairing sessions per remote address.
   constexpr std::size_t MAX_CLIENT_NAME_LENGTH = 128;  ///< Maximum length for a paired client display name.
 
@@ -235,22 +234,20 @@ namespace nvhttp {
   }
 
   /**
-   * @brief Return whether a new pairing session should be rejected for rate limiting.
+   * @brief Return whether a new pairing session should be rejected for per-address rate limiting.
    *
    * @param client_address Normalized remote address initiating pairing.
-   * @return True when the pairing request should be rejected.
+   * @return True when the pairing request should be rejected with HTTP 429.
+   *
+   * @note Global session capacity remains enforced by @ref insert_pair_session (HTTP 503).
    */
   bool pair_session_rate_limited(const std::string &client_address) {
-    std::scoped_lock lock {map_id_sess_mutex()};
-    expire_pair_sessions_unlocked(std::chrono::steady_clock::now());
-
-    if (map_id_sess.size() >= MAX_PAIR_SESSIONS) {
-      return true;
-    }
-
     if (client_address.empty()) {
       return false;
     }
+
+    std::scoped_lock lock {map_id_sess_mutex()};
+    expire_pair_sessions_unlocked(std::chrono::steady_clock::now());
 
     std::size_t count = 0;
     for (const auto &[_, sess] : map_id_sess) {
