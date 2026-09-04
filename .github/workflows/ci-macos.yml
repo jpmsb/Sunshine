@@ -102,6 +102,7 @@ jobs:
         run: |
           brew install --force \
             cmake \
+            doxygen \
             graphviz \
             node \
             pkgconf \
@@ -111,45 +112,6 @@ jobs:
             opus \
             qtbase \
             qtsvg
-
-      - name: Install Doxygen
-        # Homebrew currently ships Doxygen 1.18.x, which fails WARN_AS_ERROR on anonymous
-        # struct/union members that Sunshine documents only via the enclosing field.
-        # Windows CI already pins Doxygen; pin macOS to the last known-good 1.17.x release.
-        if: matrix.build_docs == 'ON'
-        env:
-          DOXYGEN_VERSION: "1.17.0"
-          DOXYGEN_ARCH: ${{ matrix.arch }}
-        run: |
-          doxy_ver="${DOXYGEN_VERSION}"
-          doxy_tag="${doxy_ver//./_}"
-          case "${DOXYGEN_ARCH}" in
-            arm64) archive="doxygen-${doxy_ver}-mac-arm.zip" ;;
-            x86_64) archive="doxygen-${doxy_ver}-mac-intel.zip" ;;
-            *)
-              echo "Unsupported architecture for Doxygen install: ${DOXYGEN_ARCH}"
-              exit 1
-              ;;
-          esac
-
-          url="https://github.com/doxygen/doxygen/releases/download/Release_${doxy_tag}/${archive}"
-          install_dir="${RUNNER_TEMP}/doxygen-${doxy_ver}"
-          mkdir -p "${install_dir}"
-          curl -fsSL "${url}" -o "${RUNNER_TEMP}/${archive}"
-          unzip -q "${RUNNER_TEMP}/${archive}" -d "${install_dir}"
-
-          bin_dir="${install_dir}/doxygen-${doxy_ver}"
-          if [[ ! -x "${bin_dir}/doxygen" ]]; then
-            doxygen_bin="$(find "${install_dir}" -type f -name doxygen -perm -111 | head -n 1)"
-            if [[ -z "${doxygen_bin}" ]]; then
-              echo "Doxygen binary not found in ${archive}"
-              exit 1
-            fi
-            bin_dir="$(dirname "${doxygen_bin}")"
-          fi
-
-          echo "${bin_dir}" >> "${GITHUB_PATH}"
-          "${bin_dir}/doxygen" --version
 
       - name: Configure macOS screen recording
         uses: LizardByte/tray/.github/actions/configure-macos-screen-recording@master
