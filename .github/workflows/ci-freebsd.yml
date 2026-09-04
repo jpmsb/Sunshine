@@ -33,6 +33,10 @@ jobs:
             arch: x86_64
             cmake_processor: amd64
             runner: ubuntu-latest
+          - bsd_release: '15.1'
+            arch: aarch64
+            cmake_processor: aarch64
+            runner: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
