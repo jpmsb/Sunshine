@@ -104,6 +104,9 @@ jobs:
       - name: Build and package
         env:
           EXTRA_ARGS: ${{ matrix.extra_args }}
+          # Match docker/debian.dockerfile so CPack uses DEB-DEFAULT names
+          # (e.g. sunshine_${version}-1+ubuntu22.04_arm64.deb).
+          DEBIAN_PACKAGE_RELEASE: 1+${{ matrix.distro }}${{ matrix.tag }}
         shell: bash
         run: |
           set -euo pipefail
@@ -131,14 +134,21 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          src="build/cpack_artifacts/Sunshine.deb"
-          if [[ ! -f "${src}" ]]; then
-            echo "Missing package: ${src}"
+          # Upstream #5611 sets CPACK_DEBIAN_FILE_NAME to DEB-DEFAULT, so the
+          # package is no longer always named Sunshine.deb.
+          mapfile -t debs < <(find build/cpack_artifacts -maxdepth 1 -type f -name '*.deb' | sort)
+          if [[ "${#debs[@]}" -eq 0 ]]; then
+            echo "Missing package: no .deb in build/cpack_artifacts"
             ls -la build/cpack_artifacts/ || true
             exit 1
           fi
+          if [[ "${#debs[@]}" -ne 1 ]]; then
+            echo "Expected exactly one .deb, found ${#debs[@]}:"
+            printf '%s\n' "${debs[@]}"
+            exit 1
+          fi
           dest="artifacts/sunshine-${DISTRO}-${TAG}-${ARCH}.deb"
-          cp "${src}" "${dest}"
+          cp "${debs[0]}" "${dest}"
           ls -la artifacts/
 
       - name: Upload Artifacts
