@@ -45,6 +45,7 @@
   // local includes
   #include "assets_path.h"
   #include "config.h"
+  #include "confighttp.h"
   #include "display_device.h"
   #include "globals.h"
   #include "localization.h"
