@@ -76,7 +76,7 @@ CUDA is used for NVFBC capture.
         <td rowspan="8">13.1.1</td>
         <td rowspan="8">590.48.01</td>
         <td rowspan="8">50;52;60;61;62;70;72;75;80;86;87;89;90;100;101;103;120;121</td>
-        <td>sunshine.AppImage</td>
+        <td>Sunshine_{version}_{arch}.AppImage</td>
     </tr>
     <tr>
         <td>sunshine_{version}-1+{distro}{distro-version}_{arch}.deb</td>
@@ -111,25 +111,25 @@ CUDA is used for NVFBC capture.
 > The AppImage is built on Ubuntu 22.04, which requires `glibc 2.35` or newer and `libstdc++ 3.4.11` or newer.
 
 ##### Install
-1. Download [sunshine.AppImage](https://github.com/LizardByte/Sunshine/releases/latest/download/sunshine.AppImage)
+1. Download `Sunshine_{version}_{arch}.AppImage`
    into your home directory.
    ```bash
    cd ~
-   wget https://github.com/LizardByte/Sunshine/releases/latest/download/sunshine.AppImage
+   wget https://github.com/LizardByte/Sunshine/releases/latest/download/Sunshine_{version}_{arch}.AppImage
    ```
 2. Open terminal and run the following command.
    ```bash
-   ./sunshine.AppImage --install
+   ./Sunshine_{version}_{arch}.AppImage --install
    ```
 
 ##### Run
 ```bash
-./sunshine.AppImage --install && ./sunshine.AppImage
+./Sunshine_{version}_{arch}.AppImage --install && ./Sunshine_{version}_{arch}.AppImage
 ```
 
 ##### Uninstall
 ```bash
-./sunshine.AppImage --remove
+./Sunshine_{version}_{arch}.AppImage --remove
 ```
 
 #### ArchLinux
@@ -583,9 +583,7 @@ Sunshine uses libvirtualhid for virtual input on Windows. You must install the
 Input keyboard and mouse plus full virtual gamepad support. ViGEmBus is detected only as a limited fallback for Xbox
 360 and DualShock 4 gamepads when libvirtualhid is unavailable.
 
-Sunshine requires Virtual HID Driver version `2026.829.2338.54` or newer. Earlier releases use incompatible Windows
-control and broker protocols and must be upgraded together with Sunshine's embedded libvirtualhid library. Local
-development driver builds using a `0.0.0.*` version remain supported.
+Sunshine requires Virtual HID Driver version `2026.905.2300.20` or newer.
 
 Compared with the ViGEmBus fallback, Virtual HID Driver can create Xbox One, Xbox Series, DualSense, Nintendo Switch
 Pro, and Generic gamepads in addition to Xbox 360 and DualShock 4. It can also expose controller-specific features such
@@ -696,7 +694,7 @@ To get a list of available arguments, run the following command.
       sunshine --help
       ```}
    @tab{ AppImage | ```bash
-      ./sunshine.AppImage --help
+      ./Sunshine_{version}_{arch}.AppImage --help
       ```}
    @tab{ Flatpak | ```bash
       flatpak run --command=sunshine dev.lizardbyte.app.Sunshine --help

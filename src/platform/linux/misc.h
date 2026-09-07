@@ -5,9 +5,11 @@
 #pragma once
 
 // standard includes
+#include <chrono>
 #include <fcntl.h>
 #include <filesystem>
 #include <mutex>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -79,4 +81,28 @@ namespace platf {
    * @return Reference to the shared capability mutex.
    */
   std::mutex &capability_mutex();
+
+  /**
+   * @brief Generic frame pacing logic for Linux capture methods.
+   *
+   * Advances the frame pacing timeline and re-anchors it if the capture thread falls behind.
+   *
+   * @param next_frame Time point that the next frame will be targeted against.
+   * @param delay Delay interval used to pace next frame.
+   * @param logger The sleep_overshoot_logger for tracking discontinuities.
+   */
+  inline void handle_pacing(std::chrono::steady_clock::time_point &next_frame, std::chrono::nanoseconds delay, auto &logger) {
+    auto now = std::chrono::steady_clock::now();
+
+    if (next_frame > now) {
+      std::this_thread::sleep_until(next_frame);
+      logger.first_point(next_frame);
+      logger.second_point_now_and_log();
+    }
+
+    next_frame += delay;
+    if (next_frame < now) {  // some major slowdown happened; we couldn't keep up
+      next_frame = now + delay;
+    }
+  }
 }  // namespace platf
