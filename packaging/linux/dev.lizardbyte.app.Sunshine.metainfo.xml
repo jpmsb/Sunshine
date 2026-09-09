@@ -26,8 +26,9 @@
   <description>
     <p>@PROJECT_LONG_DESCRIPTION@</p>
 
-    <p>Note: Sunshine requires additional installation steps on Flatpak. Run
-      <code>flatpak run --command=additional-install.sh @PROJECT_FQDN@</code>
+    <p>NOTE: Sunshine requires additional installation steps on Flatpak.</p>
+    <p>
+      Run <code>flatpak run --command=additional-install.sh @PROJECT_FQDN@</code>
     </p>
     <p>Note: Sunshine uses a self-signed certificate. The web browser will report it as not secure, but it is safe.</p>
   </description>

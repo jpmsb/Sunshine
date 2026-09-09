@@ -8,11 +8,11 @@
 
 %undefine _hardened_build
 
-# When enabled (default), download the NVIDIA CUDA runfile if no system nvcc is found.
-# Build with --without bundled_cuda to skip the runfile (use system nvcc or build without CUDA).
+# When enabled (default), download/install CUDA if no system nvcc is found.
+# Build with --without bundled_cuda to skip CUDA bootstrap (use system nvcc or build without CUDA).
 %bcond_without bundled_cuda 1
 
-# Define _metainfodir for OpenSUSE if not already defined
+# Define _metainfodir for openSUSE if not already defined
 %if 0%{?suse_version}
 %if !0%{?_metainfodir:1}
 %global _metainfodir %{_datadir}/metainfo
@@ -45,13 +45,13 @@ BuildRequires: libXi-devel
 BuildRequires: libXinerama-devel
 BuildRequires: libXrandr-devel
 BuildRequires: libXtst-devel
-BuildRequires: pipewire-devel
 %if 0%{?fedora}
 BuildRequires: openssl-devel
 %endif
 %if 0%{?suse_version}
 BuildRequires: libopenssl-3-devel
 %endif
+BuildRequires: pipewire-devel
 BuildRequires: rpm-build
 BuildRequires: systemd-rpm-macros
 BuildRequires: wget
@@ -89,7 +89,7 @@ BuildRequires: xorg-x11-server-Xvfb
 %endif
 
 %if 0%{?suse_version}
-# OpenSUSE-specific BuildRequires
+# openSUSE-specific BuildRequires
 BuildRequires: AppStream
 BuildRequires: appstream-glib
 BuildRequires: libgudev-1_0-devel
@@ -99,25 +99,15 @@ BuildRequires: libminiupnpc-devel
 BuildRequires: libnuma-devel
 BuildRequires: libopus-devel
 BuildRequires: libpulse-devel
-%if 0%{?sle_version}
-# OpenSUSE Leap: npm/python package names differ from Tumbleweed
 BuildRequires: npm
-BuildRequires: python311
-BuildRequires: python311-Jinja2
-%else
-# OpenSUSE Tumbleweed (suse_version may equal Leap; sle_version is unset)
-BuildRequires: libxml2-16
-BuildRequires: npm-default
 BuildRequires: python313
 BuildRequires: python313-Jinja2
-%endif
-%if !0%{?sle_version}
+BuildRequires: qt6-base-devel
+BuildRequires: qt6-svg-devel
 BuildRequires: shaderc
-%endif
 BuildRequires: udev
-%if !0%{?sle_version}
 BuildRequires: vulkan-devel
-%endif
+BuildRequires: xz
 # for unit tests
 BuildRequires: ImageMagick
 BuildRequires: xvfb-run
@@ -147,25 +137,13 @@ BuildRequires: gcc15-c++
 %endif
 
 %if 0%{?suse_version}
-%if 0%{?sle_version}
-# OpenSUSE Leap 15.x (Qt6 not in standard repos, use Qt5)
-BuildRequires: gcc14
-BuildRequires: gcc14-c++
-BuildRequires: libqt5-qtbase-devel
-BuildRequires: libqt5-qtsvg-devel
-%global gcc_version 14
-%global cuda_version 12.9.1
-%global cuda_build 575.57.08
-%else
-# OpenSUSE Tumbleweed (suse_version may equal Leap; sle_version is unset)
 BuildRequires: gcc15
 BuildRequires: gcc15-c++
-BuildRequires: qt6-base-devel
-BuildRequires: qt6-svg-devel
 %global gcc_version 15
 %global cuda_version 13.1.1
 %global cuda_build 590.48.01
-%endif
+%global cuda_redist_compiler_version 13.1.115
+%global cuda_redist_runtime_version 13.1.80
 %endif
 
 %global cuda_dir %{_builddir}/cuda
@@ -197,7 +175,21 @@ Requires: vulkan-loader
 %endif
 
 %if 0%{?suse_version}
-# Shared library dependencies are added automatically on openSUSE via shlib policy.
+# openSUSE runtime requirements
+Requires: libcap2
+Requires: libcurl4
+Requires: libdrm2
+Requires: libevdev2
+Requires: libopusenc0
+Requires: libva2
+Requires: libwayland-client0
+Requires: libX11-6
+Requires: libnuma1
+Requires: libopenssl3
+Requires: libpulse0
+Requires: libQt6Svg6
+Requires: libQt6Widgets6
+Requires: libvulkan1
 %endif
 
 %description
@@ -248,22 +240,106 @@ cmake_args+=("-DPython_EXECUTABLE=%{_builddir}/Sunshine/.venv/bin/python")
 %endif
 
 %if 0%{?suse_version}
-%if 0%{?sle_version}
-# Leap: use the Python interpreter that owns python311-Jinja2
-cmake_args+=("-DGLAD_SKIP_PIP_INSTALL=ON")
-cmake_args+=("-DPython_EXECUTABLE=/usr/bin/python3.11")
-%else
-# Tumbleweed: python3 is provided by python313
+# Use the Python interpreter that owns the python313-Jinja2 BuildRequires.
 cmake_args+=("-DGLAD_SKIP_PIP_INSTALL=ON")
 cmake_args+=("-DPython_EXECUTABLE=/usr/bin/python3.13")
-%endif
 %endif
 
 export CC=gcc-%{gcc_version}
 export CXX=g++-%{gcc_version}
 
-function apply_cuda_patches() {
-  local toolkit_root="$1"
+%if 0%{?suse_version}
+function install_cuda_from_redistributables() {
+  local cuda_redist_arch="linux-x86_64"
+  local cuda_target_arch="x86_64-linux"
+  if [ "$architecture" == "aarch64" ]; then
+    cuda_redist_arch="linux-sbsa"
+    cuda_target_arch="sbsa-linux"
+  fi
+
+  local cuda_target_dir="%{cuda_dir}/targets/${cuda_target_arch}"
+  mkdir -p "%{cuda_dir}" "${cuda_target_dir}"
+
+  # NVIDIA's monolithic runfile installer requires libxml2.so.2, which Tumbleweed
+  # no longer provides. Use the official redistributable archives for all openSUSE
+  # builds so they share one installer-independent CUDA setup.
+  local cuda_components=(
+    "cuda_nvcc:%{cuda_redist_compiler_version}:root"
+    "libnvvm:%{cuda_redist_compiler_version}:root"
+    "cuda_cccl:%{cuda_redist_compiler_version}:target"
+    "cuda_crt:%{cuda_redist_compiler_version}:target"
+    "cuda_cudart:%{cuda_redist_runtime_version}:target"
+    "cuda_culibos:%{cuda_redist_compiler_version}:target"
+    "libnvptxcompiler:%{cuda_redist_compiler_version}:target"
+  )
+
+  local component_data
+  for component_data in "${cuda_components[@]}"; do
+    local component_name
+    local component_version
+    local component_destination
+    IFS=: read -r component_name component_version component_destination <<< "${component_data}"
+
+    local archive="${component_name}-${cuda_redist_arch}-${component_version}-archive.tar.xz"
+    local url="https://developer.download.nvidia.com/compute/cuda/redist/${component_name}/${cuda_redist_arch}/${archive}"
+    local extract_dir="${cuda_target_dir}"
+    if [ "${component_destination}" == "root" ]; then
+      extract_dir="%{cuda_dir}"
+    fi
+
+    echo "cuda component url: ${url}"
+    wget \
+      "${url}" \
+      --progress=bar:force:noscroll \
+      --retry-connrefused \
+      --tries=3 \
+      -q -O "%{_builddir}/${archive}"
+    tar -xJf "%{_builddir}/${archive}" \
+      --directory="${extract_dir}" \
+      --strip-components=1
+    rm "%{_builddir}/${archive}"
+  done
+
+  # nvcc expects this header in its target-specific include directory.
+  mv "%{cuda_dir}/include/fatbinary_section.h" "${cuda_target_dir}/include/"
+}
+%endif
+
+function install_cuda() {
+  # check if we need to install cuda
+  if [ -f "%{cuda_dir}/bin/nvcc" ]; then
+    echo "cuda already installed"
+    return
+  fi
+
+%if 0%{?suse_version}
+  install_cuda_from_redistributables
+%else
+  local cuda_prefix="https://developer.download.nvidia.com/compute/cuda/"
+  local cuda_suffix=""
+  if [ "$architecture" == "aarch64" ]; then
+    local cuda_suffix="_sbsa"
+  fi
+
+  local url="${cuda_prefix}%{cuda_version}/local_installers/cuda_%{cuda_version}_%{cuda_build}_linux${cuda_suffix}.run"
+  echo "cuda url: ${url}"
+  wget \
+    "$url" \
+    --progress=bar:force:noscroll \
+    --retry-connrefused \
+    --tries=3 \
+    -q -O "%{_builddir}/cuda.run"
+  chmod a+x "%{_builddir}/cuda.run"
+  "%{_builddir}/cuda.run" \
+    --no-drm \
+    --no-man-page \
+    --no-opengl-libs \
+    --override \
+    --silent \
+    --toolkit \
+    --toolkitpath="%{cuda_dir}"
+  rm "%{_builddir}/cuda.run"
+%endif
 
   # we need to patch math_functions.h depending on the CUDA major version
   # see https://forums.developer.nvidia.com/t/error-exception-specification-is-incompatible-for-cospi-sinpi-cospif-sinpif-with-glibc-2-41/323591/3
@@ -283,146 +359,44 @@ function apply_cuda_patches() {
 
   if [ -n "${patch_file}" ]; then
     echo "Applying CUDA patch: ${patch_file}"
-    # -N/--forward ignores an already-applied patch (non-zero exit is OK then).
     patch -p2 \
-      -N \
-      --forward \
       --backup \
-      --directory="${toolkit_root}" \
+      --directory="%{cuda_dir}" \
       --verbose \
-      < "%{_builddir}/Sunshine/packaging/linux/patches/${architecture}/${patch_file}" \
-      || echo "CUDA patch ${patch_file} already applied or skipped; continuing."
+      < "%{_builddir}/Sunshine/packaging/linux/patches/${architecture}/${patch_file}"
   fi
 }
-
-function install_cuda() {
-  # check if we need to install cuda
-  if [ -f "%{cuda_dir}/bin/nvcc" ]; then
-    echo "cuda already installed"
-    return 0
-  fi
-
-  local cuda_prefix="https://developer.download.nvidia.com/compute/cuda/"
-  local cuda_suffix=""
-  if [ "$architecture" == "aarch64" ]; then
-    # CUDA aarch64 toolkit installers use the SBSA (server) naming.
-    cuda_suffix="_sbsa"
-  fi
-
-  local url="${cuda_prefix}%{cuda_version}/local_installers/cuda_%{cuda_version}_%{cuda_build}_linux${cuda_suffix}.run"
-  echo "cuda url: ${url}"
-
-  # Toolkit runfile is ~4GiB and extracts to several more GiB. Fail early with a clear
-  # message instead of a quiet wget exit when the runner/container is out of disk.
-  local free_kib
-  free_kib="$(df -Pk "%{_builddir}" | awk 'NR==2 {print $4}')"
-  if [ -n "${free_kib}" ] && [ "${free_kib}" -lt 10485760 ]; then
-    echo "ERROR: insufficient disk space for CUDA toolkit (need >= 10GiB free, have $((free_kib / 1024))MiB)." >&2
-    df -h "%{_builddir}" >&2 || true
-    return 1
-  fi
-
-  # Do not use wget -q: CI needs the real failure reason (ENOSPC, 403, TLS, etc.).
-  if ! wget \
-    "$url" \
-    --progress=bar:force:noscroll \
-    --retry-connrefused \
-    --tries=3 \
-    -O "%{_builddir}/cuda.run"; then
-    echo "ERROR: failed to download CUDA runfile from ${url}" >&2
-    df -h "%{_builddir}" >&2 || true
-    rm -f "%{_builddir}/cuda.run"
-    return 1
-  fi
-  chmod a+x "%{_builddir}/cuda.run"
-
-  # openSUSE Tumbleweed provides libxml2.so.16; the NVIDIA cuda-installer still requires libxml2.so.2.
-  if ! ldconfig -p 2>/dev/null | grep -q 'libxml2\.so\.2 '; then
-    for libdir in /usr/lib64 /usr/lib /lib64 /lib; do
-      if [ -e "${libdir}/libxml2.so.2" ]; then
-        break
-      fi
-      for candidate in "${libdir}"/libxml2.so.*; do
-        if [ -e "${candidate}" ]; then
-          echo "Creating CUDA compatibility symlink: ${libdir}/libxml2.so.2 -> ${candidate}"
-          ln -sfn "$(basename "${candidate}")" "${libdir}/libxml2.so.2"
-          break 2
-        fi
-      done
-    done
-  fi
-
-  if ! "%{_builddir}/cuda.run" \
-    --no-drm \
-    --no-man-page \
-    --no-opengl-libs \
-    --override \
-    --silent \
-    --toolkit \
-    --toolkitpath="%{cuda_dir}"; then
-    echo "ERROR: CUDA runfile installer failed." >&2
-    df -h "%{_builddir}" >&2 || true
-    rm -f "%{_builddir}/cuda.run"
-    return 1
-  fi
-  rm -f "%{_builddir}/cuda.run"
-  return 0
-}
-
-function detect_nvcc_path() {
-  local nvcc_path=""
-
-  nvcc_path="$(command -v nvcc 2>/dev/null || true)"
-  if [ -n "${nvcc_path}" ]; then
-    echo "${nvcc_path}"
-    return 0
-  fi
-
-  for candidate in \
-    "/usr/local/cuda/bin/nvcc" \
-    "%{cuda_dir}/bin/nvcc"; do
-    if [ -x "${candidate}" ]; then
-      echo "${candidate}"
-      return 0
-    fi
-  done
-
-  return 1
-}
-
-nvcc_path=""
-if nvcc_path="$(detect_nvcc_path)"; then
-  echo "Using CUDA compiler: ${nvcc_path}"
-fi
 
 %if %{with bundled_cuda}
-if [ -z "${nvcc_path}" ]; then
-  # Keep the RPM build going if the runfile cannot be fetched/installed (common on
-  # space-constrained CI runners). CMake then falls back via CUDA_FAIL_ON_MISSING.
-  if install_cuda; then
-    nvcc_path="%{cuda_dir}/bin/nvcc"
-  else
-    echo "WARNING: bundled CUDA install failed; building without NVENC/NvFBC."
-  fi
-fi
-%else
-echo "bundled_cuda disabled; skipping NVIDIA CUDA runfile download"
-%endif
-
 if [ -n "%{cuda_version}" ] && [[ " ${cuda_supported_architectures[@]} " =~ " ${architecture} " ]]; then
   cmake_args+=("-DSUNSHINE_ENABLE_CUDA=ON")
-  if [ -n "${nvcc_path}" ] && [ -x "${nvcc_path}" ]; then
-    cuda_toolkit_root="$(cd "$(dirname "${nvcc_path}")/.." && pwd)"
-    apply_cuda_patches "${cuda_toolkit_root}"
-    cmake_args+=("-DCMAKE_CUDA_COMPILER:PATH=${nvcc_path}")
+  # Keep the RPM build going if CUDA bootstrap fails (common on space-constrained CI).
+  if install_cuda; then
+    cmake_args+=("-DCMAKE_CUDA_COMPILER:PATH=%{cuda_dir}/bin/nvcc")
     cmake_args+=("-DCMAKE_CUDA_HOST_COMPILER=gcc-%{gcc_version}")
   else
-    echo "No CUDA compiler found; building without NVENC/NvFBC (CUDA_FAIL_ON_MISSING=OFF)"
+    echo "WARNING: bundled CUDA install failed; building without NVENC/NvFBC."
     cmake_args+=("-DCUDA_FAIL_ON_MISSING=OFF")
   fi
 else
   cmake_args+=("-DSUNSHINE_ENABLE_CUDA=OFF")
 fi
+%else
+echo "bundled_cuda disabled; skipping CUDA bootstrap"
+if [ -n "%{cuda_version}" ] && [[ " ${cuda_supported_architectures[@]} " =~ " ${architecture} " ]]; then
+  cmake_args+=("-DSUNSHINE_ENABLE_CUDA=ON")
+  if command -v nvcc >/dev/null 2>&1; then
+    nvcc_path="$(command -v nvcc)"
+    cmake_args+=("-DCMAKE_CUDA_COMPILER:PATH=${nvcc_path}")
+    cmake_args+=("-DCMAKE_CUDA_HOST_COMPILER=gcc-%{gcc_version}")
+  else
+    echo "No system nvcc found; building without NVENC/NvFBC (CUDA_FAIL_ON_MISSING=OFF)"
+    cmake_args+=("-DCUDA_FAIL_ON_MISSING=OFF")
+  fi
+else
+  cmake_args+=("-DSUNSHINE_ENABLE_CUDA=OFF")
+fi
+%endif
 
 # Install and setup NVM for Fedora 44+
 %if 0%{?fedora} > 43
@@ -462,16 +436,9 @@ export BRANCH=%{branch}
 export BUILD_VERSION=v%{build_version}
 export COMMIT=%{commit}
 
-# Disable Vulkan on openSUSE Leap (shaderc/glslang not in official repos)
-%if 0%{?sle_version}
-cmake_args+=("-DSUNSHINE_ENABLE_VULKAN=OFF")
-%endif
-
 %if 0%{?suse_version}
-%if !0%{?sle_version}
-# build-deps is excluded from packaging tarballs; use distro Vulkan headers on Tumbleweed
+# build-deps may be excluded from packaging tarballs; use distro Vulkan headers on openSUSE
 cmake_args+=("-DSUNSHINE_SYSTEM_VULKAN_HEADERS=ON")
-%endif
 %endif
 
 # cmake
@@ -495,9 +462,9 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/*.metainfo.xml
 appstream-util validate --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop
 
-# run tests under Xvfb only; unset Wayland session vars so platf::init() enables X11 capture
+# run tests
 cd %{_builddir}/Sunshine/build
-env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE xvfb-run -a -s "-screen 0 1024x768x24" ./tests/test_sunshine
+xvfb-run ./tests/test_sunshine
 
 %install
 # Load NVM for Fedora 44+ so npm is available during make install
@@ -577,5 +544,3 @@ fi
 %{_datadir}/sunshine/**
 
 %changelog
-* Sun Jul 12 2026 LizardByte <https://github.com/LizardByte/Sunshine> - %{version}-%{release}
-- Update to %{version}

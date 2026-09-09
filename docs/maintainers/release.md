@@ -31,6 +31,7 @@ to be created before making a stable release. Below are the instructions for con
        - LizardByte Discord
        - r/LizardByte subreddit
        - Facebook
+       - X
 
    - Update changelog in [changelog](https://github.com/LizardByte/Sunshine/tree/changelog) branch
    - Update docs on [Read The Docs](https://app.readthedocs.org/projects/sunshinestream/)
@@ -50,5 +51,3 @@ to be created before making a stable release. Below are the instructions for con
      openSUSE Tumbleweed RPMs attached to the GitHub release are produced earlier by the main CI
      job on GitHub Actions (x86_64 and aarch64), not by OBS.
    - Send release notification to Moonlight Discord server
-
-6. X (Twitter) API is no longer free, so we must manually post the release there.
