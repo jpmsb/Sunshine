@@ -7,6 +7,6 @@ packaging/linux/flatpak/deps/flatpak-builder-tools
 
 # Full build-deps submodule (FFmpeg/Vulkan metadata, etc.). CMake downloads FFmpeg
 # releases at build time, so the submodule is skipped for RPM size. prepare_rpm_source.sh
-# rewrites this blanket exclude to keep only FFmpeg/nv-codec-headers (NVENC 13.0),
-# which cmake requires after LizardByte/Sunshine#5449.
+# rewrites this blanket exclude to keep package-lock.cmake (CPM / NVENC 13.1 after
+# LizardByte/Sunshine#5668) and FFmpeg/nv-codec-headers (ffmpeg.cmake fallback).
 third-party/build-deps
