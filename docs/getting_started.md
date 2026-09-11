@@ -101,6 +101,27 @@ CUDA is used for NVFBC capture.
     </tr>
 </table>
 
+#### Alpine Linux
+
+> [!IMPORTANT]
+> The Alpine package is dynamically linked against Alpine 3.24 libraries. CUDA and NVFBC capture are not available in
+> this package, but the other capture and encoding backends supported by the system remain enabled.
+
+##### Install
+
+1. Download `sunshine_{version}_alpine{distro-version}_{arch}.apk` from the [latest release][latest-release].
+2. Install the package as root. Release APKs use a per-build signing key, so explicitly allow the downloaded package.
+
+   ```sh
+   apk add --allow-untrusted ./sunshine_{version}_alpine{distro-version}_{arch}.apk
+   ```
+
+##### Uninstall
+
+```sh
+apk del sunshine
+```
+
 #### AppImage
 
 > [!CAUTION]
@@ -190,7 +211,7 @@ sudo apt install sunshine
 
 Download `sunshine_{version}-1+{distro}{distro-version}_{arch}.deb` and run the following command.
 ```bash
-sudo dpkg -i ./sunshine_{version}-1+{distro}{distro-version}_{arch}.deb
+sudo apt install ./sunshine_{version}-1+{distro}{distro-version}_{arch}.deb
 ```
 
 > [!NOTE]

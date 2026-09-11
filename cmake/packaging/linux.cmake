@@ -217,7 +217,7 @@ if(${SUNSHINE_TRAY} STREQUAL 1)
     list(APPEND CPACK_FREEBSD_PACKAGE_DEPS
             devel/libnotify
     )
-    if(TRAY_QT_VERSION EQUAL 6)
+    if(SUNSHINE_TRAY_QT_VERSION EQUAL 6)
         set(CPACK_DEBIAN_PACKAGE_DEPENDS "\
                     ${CPACK_DEBIAN_PACKAGE_DEPENDS}, \
                     libqt6widgets6, \
@@ -240,7 +240,7 @@ if(${SUNSHINE_TRAY} STREQUAL 1)
                 devel/qt6-base
                 graphics/qt6-svg
         )
-    else()
+    elseif(SUNSHINE_TRAY_QT_VERSION EQUAL 5)
         set(CPACK_DEBIAN_PACKAGE_DEPENDS "\
                     ${CPACK_DEBIAN_PACKAGE_DEPENDS}, \
                     libqt5widgets5, \
@@ -263,6 +263,8 @@ if(${SUNSHINE_TRAY} STREQUAL 1)
                 x11-toolkits/qt5-widgets
                 graphics/qt5-svg
         )
+    else()
+        message(FATAL_ERROR "Unsupported tray Qt version: ${SUNSHINE_TRAY_QT_VERSION}")
     endif()
 endif()
 
