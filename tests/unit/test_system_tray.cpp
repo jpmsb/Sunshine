@@ -51,7 +51,7 @@ namespace {
    */
   void pump_tray_events(const int iterations = 100, const std::chrono::milliseconds delay = 5ms) {
     for (int i = 0; i < iterations; ++i) {
-      if (tray_loop(0) != 0) {
+      if (system_tray::process_tray_events() != 0) {
         return;
       }
       std::this_thread::sleep_for(delay);
@@ -142,33 +142,43 @@ namespace {
     EXPECT_NE(tray_data.menu[2].submenu[4].cb, nullptr);
     EXPECT_EQ(tray_data.menu[2].submenu[5].text, nullptr);
     EXPECT_STREQ(tray_data.menu[3].text, "-");
-    EXPECT_STREQ(tray_data.menu[4].text, "Donate");
-    ASSERT_NE(tray_data.menu[4].submenu, nullptr);
-    EXPECT_STREQ(tray_data.menu[4].submenu[0].text, "GitHub Sponsors");
-    EXPECT_STREQ(tray_data.menu[4].submenu[1].text, "Patreon");
-    EXPECT_STREQ(tray_data.menu[4].submenu[2].text, "PayPal");
-    EXPECT_EQ(tray_data.menu[4].submenu[3].text, nullptr);
-    EXPECT_STREQ(tray_data.menu[5].text, "-");
-    EXPECT_STREQ(tray_data.menu[6].text, "Reset Display Device Config");
-    EXPECT_NE(tray_data.menu[6].cb, nullptr);
+    EXPECT_STREQ(tray_data.menu[4].text, "Connected Clients");
+    EXPECT_EQ(tray_data.menu[4].disabled, 1);
+    EXPECT_STREQ(tray_data.menu[5].text, "(No clients connected)");
+    EXPECT_EQ(tray_data.menu[5].disabled, 1);
+    EXPECT_STREQ(tray_data.menu[6].text, "-");
+    EXPECT_STREQ(tray_data.menu[7].text, "Donate");
+    ASSERT_NE(tray_data.menu[7].submenu, nullptr);
+    EXPECT_STREQ(tray_data.menu[7].submenu[0].text, "GitHub Sponsors");
+    EXPECT_STREQ(tray_data.menu[7].submenu[1].text, "Patreon");
+    EXPECT_STREQ(tray_data.menu[7].submenu[2].text, "PayPal");
+    EXPECT_EQ(tray_data.menu[7].submenu[3].text, nullptr);
+    EXPECT_STREQ(tray_data.menu[8].text, "-");
+    EXPECT_STREQ(tray_data.menu[9].text, "Reset Display Device Config");
+    EXPECT_NE(tray_data.menu[9].cb, nullptr);
+    EXPECT_STREQ(tray_data.menu[10].text, "Restart");
+    EXPECT_NE(tray_data.menu[10].cb, nullptr);
+    EXPECT_STREQ(tray_data.menu[11].text, "Quit");
+    EXPECT_NE(tray_data.menu[11].cb, nullptr);
+    EXPECT_EQ(tray_data.menu[12].text, nullptr);
+  #else
+    EXPECT_STREQ(tray_data.menu[2].text, "Connected Clients");
+    EXPECT_EQ(tray_data.menu[2].disabled, 1);
+    EXPECT_STREQ(tray_data.menu[3].text, "(No clients connected)");
+    EXPECT_EQ(tray_data.menu[3].disabled, 1);
+    EXPECT_STREQ(tray_data.menu[4].text, "-");
+    EXPECT_STREQ(tray_data.menu[5].text, "Donate");
+    ASSERT_NE(tray_data.menu[5].submenu, nullptr);
+    EXPECT_STREQ(tray_data.menu[5].submenu[0].text, "GitHub Sponsors");
+    EXPECT_STREQ(tray_data.menu[5].submenu[1].text, "Patreon");
+    EXPECT_STREQ(tray_data.menu[5].submenu[2].text, "PayPal");
+    EXPECT_EQ(tray_data.menu[5].submenu[3].text, nullptr);
+    EXPECT_STREQ(tray_data.menu[6].text, "-");
     EXPECT_STREQ(tray_data.menu[7].text, "Restart");
     EXPECT_NE(tray_data.menu[7].cb, nullptr);
     EXPECT_STREQ(tray_data.menu[8].text, "Quit");
     EXPECT_NE(tray_data.menu[8].cb, nullptr);
     EXPECT_EQ(tray_data.menu[9].text, nullptr);
-  #else
-    EXPECT_STREQ(tray_data.menu[2].text, "Donate");
-    ASSERT_NE(tray_data.menu[2].submenu, nullptr);
-    EXPECT_STREQ(tray_data.menu[2].submenu[0].text, "GitHub Sponsors");
-    EXPECT_STREQ(tray_data.menu[2].submenu[1].text, "Patreon");
-    EXPECT_STREQ(tray_data.menu[2].submenu[2].text, "PayPal");
-    EXPECT_EQ(tray_data.menu[2].submenu[3].text, nullptr);
-    EXPECT_STREQ(tray_data.menu[3].text, "-");
-    EXPECT_STREQ(tray_data.menu[4].text, "Restart");
-    EXPECT_NE(tray_data.menu[4].cb, nullptr);
-    EXPECT_STREQ(tray_data.menu[5].text, "Quit");
-    EXPECT_NE(tray_data.menu[5].cb, nullptr);
-    EXPECT_EQ(tray_data.menu[6].text, nullptr);
   #endif
   }
 
@@ -217,16 +227,20 @@ namespace {
     verify_state(0, PROJECT_NAME, nullptr, nullptr, std::nullopt, false);
 
     system_tray::update_tray_playing("Moonlight");
+    pump_tray_events(1, 0ms);
     verify_state(2, "Streaming started for Moonlight", "Stream Started", "Streaming started for Moonlight", 2, false);
 
     system_tray::update_tray_pausing("Moonlight");
+    pump_tray_events(1, 0ms);
     verify_state(3, "Streaming paused for Moonlight", "Stream Paused", "Streaming paused for Moonlight", 3, false);
 
     system_tray::update_tray_stopped("Moonlight");
+    pump_tray_events(1, 0ms);
     verify_state(0, PROJECT_NAME, "Application Stopped", "Application Moonlight successfully stopped", 0, false);
 
     system_tray::update_tray_require_pin();
-    verify_state(0, PROJECT_NAME, "Incoming Pairing Request", "Click here to complete the pairing process", 1, true);
+    pump_tray_events(1, 0ms);
+    verify_state(0, PROJECT_NAME, "Pairing Request", "Click here to enter the PIN.", 1, true);
   }
   #endif
 }  // namespace
@@ -646,16 +660,28 @@ TEST_F(SystemTrayVisualTest, CapturesIconTooltipNotificationsAndMenu) {
 
   dismissNativeNotifications();
   system_tray::update_tray_playing("Moonlight");
+    #ifndef _WIN32
+  pump_tray_events(1, 0ms);
+    #endif
   verify_state(2, "Streaming started for Moonlight", "Stream Started", "Streaming started for Moonlight", 2, false);
   capture_notification("sunshine_tray_streaming");
   system_tray::update_tray_pausing("Moonlight");
+    #ifndef _WIN32
+  pump_tray_events(1, 0ms);
+    #endif
   verify_state(3, "Streaming paused for Moonlight", "Stream Paused", "Streaming paused for Moonlight", 3, false);
   capture_notification("sunshine_tray_paused");
   system_tray::update_tray_stopped("Moonlight");
+    #ifndef _WIN32
+  pump_tray_events(1, 0ms);
+    #endif
   verify_state(0, PROJECT_NAME, "Application Stopped", "Application Moonlight successfully stopped", 0, false);
   capture_notification("sunshine_tray_stopped");
   system_tray::update_tray_require_pin();
-  verify_state(0, PROJECT_NAME, "Incoming Pairing Request", "Click here to complete the pairing process", 1, true);
+    #ifndef _WIN32
+  pump_tray_events(1, 0ms);
+    #endif
+  verify_state(0, PROJECT_NAME, "Pairing Request", "Click here to enter the PIN.", 1, true);
   capture_notification("sunshine_tray_pairing_request");
 
   int menu_position_result = -1;
