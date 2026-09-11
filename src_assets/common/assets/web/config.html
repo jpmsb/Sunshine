@@ -50,7 +50,7 @@
               <a class="nav-link" :class="{'active': tab.id === currentTab}" href="#"
                 @click="currentTab = tab.id">
                 <component :is="getTabIcon(tab.id)" :size="18" class="icon"></component>
-                {{tab.name}}
+                {{ $t(tab.nameKey) }}
               </a>
             </li>
           </ul>
@@ -61,7 +61,7 @@
                 <a class="nav-link" :class="{'active': tab.id === currentTab}" href="#"
                   @click="currentTab = tab.id">
                   <component :is="getTabIcon(tab.id)" :size="18" class="icon"></component>
-                  {{tab.name}}
+                  {{ $t(tab.nameKey) }}
                 </a>
               </li>
             </ul>
@@ -209,7 +209,7 @@
         tabs: [ // TODO: Move the options to each Component instead, encapsulate.
           {
             id: "general",
-            name: "General",
+            nameKey: "config.category_general",
             options: {
               "locale": "en",
               "sunshine_name": "",
@@ -221,7 +221,7 @@
           },
           {
             id: "input",
-            name: "Input",
+            nameKey: "config.category_input",
             options: {
               "controller": "enabled",
               "gamepad_driver": "",
@@ -244,7 +244,7 @@
           },
           {
             id: "av",
-            name: "Audio/Video",
+            nameKey: "config.category_audio_video",
             options: {
               "audio_sink": "",
               "virtual_sink": "",
@@ -268,7 +268,7 @@
           },
           {
             id: "network",
-            name: "Network",
+            nameKey: "config.category_network",
             options: {
               "upnp": "disabled",
               "address_family": "ipv4",
@@ -286,7 +286,7 @@
           },
           {
             id: "files",
-            name: "Config Files",
+            nameKey: "config.category_config_files",
             options: {
               "file_apps": "",
               "credentials_file": "",
@@ -298,7 +298,7 @@
           },
           {
             id: "advanced",
-            name: "Advanced",
+            nameKey: "config.category_advanced",
             options: {
               "fec_percentage": 20,
               "qp": 28,
@@ -314,7 +314,7 @@
           },
           {
             id: "nv",
-            name: "NVIDIA NVENC Encoder",
+            nameKey: "config.category_nvidia_nvenc_encoder",
             options: {
               "nvenc_preset": 1,
               "nvenc_twopass": "quarter_res",
@@ -329,7 +329,7 @@
           },
           {
             id: "qsv",
-            name: "Intel QuickSync Encoder",
+            nameKey: "config.category_intel_quicksync_encoder",
             options: {
               "qsv_preset": "medium",
               "qsv_coder": "auto",
@@ -338,7 +338,7 @@
           },
           {
             id: "amd",
-            name: "AMD AMF Encoder",
+            nameKey: "config.category_amd_amf_encoder",
             options: {
               "amd_usage": "ultralowlatency",
               "amd_rc": "vbr_latency",
@@ -352,7 +352,7 @@
           },
           {
             id: "vt",
-            name: "VideoToolbox Encoder",
+            nameKey: "config.category_videotoolbox_encoder",
             options: {
               "vt_coder": "auto",
               "vt_software": "auto",
@@ -361,7 +361,7 @@
           },
           {
             id: "vaapi",
-            name: "VA-API Encoder",
+            nameKey: "config.category_vaapi_encoder",
             options: {
               "vaapi_blbrc": "disabled",
               "vaapi_quality": "auto",
@@ -371,7 +371,7 @@
           },
           {
             id: "vulkan",
-            name: "Vulkan Encoder",
+            nameKey: "config.category_vulkan_encoder",
             options: {
               "vk_tune": 2,
               "vk_rc_mode": 2,
@@ -379,7 +379,7 @@
           },
           {
             id: "sw",
-            name: "Software Encoder",
+            nameKey: "config.category_software_encoder",
             options: {
               "sw_preset": "superfast",
               "sw_tune": "zerolatency",
@@ -408,7 +408,7 @@
             options.push({
               key: key,
               label: key.replaceAll('_', ' ').replaceAll(/\b\w/g, l => l.toUpperCase()),
-              tab: tab.name,
+              tab: this.$t(tab.nameKey),
               tabId: tab.id
             });
           });
