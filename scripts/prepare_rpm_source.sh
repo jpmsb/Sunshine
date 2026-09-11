@@ -133,30 +133,61 @@ excluded_paths=()
 default_tar_excludes excluded_paths
 read_copr_ci_excludes excluded_paths
 
-# Ensure NVENC headers exist when the full build-deps submodule is skipped.
-# After LizardByte/Sunshine#5449, cmake includes:
-#   third-party/build-deps/third-party/FFmpeg/nv-codec-headers/include
-# Packaging excludes build-deps to keep tarballs small; without these headers the
-# compiler silently picks older CUDA toolkit ffnvcodec headers and nvenc_base.cpp
-# fails the NVENCAPI_VERSION == 13.0 guard.
+# CMakeLists.txt includes third-party/build-deps/package-lock.cmake (after
+# LizardByte/Sunshine#5668) so CPM can declare nv_codec_headers_13_1. Packaging
+# skips the full build-deps submodule; fetch just the lock file when missing.
+function ensure_build_deps_package_lock() {
+  local dest="${source_root}/third-party/build-deps/package-lock.cmake"
+  if [[ -f "${dest}" ]]; then
+    echo "build-deps package-lock.cmake already present"
+    return 0
+  fi
+
+  local sha
+  sha="$(git -C "${source_root}" rev-parse HEAD:third-party/build-deps 2>/dev/null || true)"
+  if [[ -z "${sha}" ]]; then
+    echo "ERROR: could not resolve third-party/build-deps SHA for package-lock.cmake." >&2
+    exit 1
+  fi
+
+  local url="https://raw.githubusercontent.com/LizardByte/build-deps/${sha}/package-lock.cmake"
+  echo "Fetching build-deps package-lock.cmake (${sha})..."
+  mkdir -p "$(dirname "${dest}")"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "${url}" -o "${dest}"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "${dest}" "${url}"
+  else
+    echo "ERROR: curl or wget required to fetch package-lock.cmake" >&2
+    exit 1
+  fi
+  if [[ ! -f "${dest}" ]] || ! grep -q 'CPMDeclarePackage(nv_codec_headers_13_1' "${dest}"; then
+    echo "ERROR: failed to populate a valid package-lock.cmake at ${dest}" >&2
+    exit 1
+  fi
+}
+
+# ffmpeg.cmake falls back to this tree when prepared FFmpeg omits ffnvcodec headers.
+# Keep NVENC 13.1 headers aligned with build-deps package-lock (n13.1.15.0).
 function ensure_nv_codec_headers() {
   local dest="${source_root}/third-party/build-deps/third-party/FFmpeg/nv-codec-headers"
   local hdr="${dest}/include/ffnvcodec/nvEncodeAPI.h"
+  local tag="n13.1.15.0"
   if [[ -f "${hdr}" ]]; then
     local major minor
     major="$(sed -n 's/^#define NVENCAPI_MAJOR_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' "${hdr}" | head -1)"
     minor="$(sed -n 's/^#define NVENCAPI_MINOR_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' "${hdr}" | head -1)"
-    if [[ "${major}" == "13" && "${minor}" == "0" ]]; then
+    if [[ "${major}" == "13" && "${minor}" == "1" ]]; then
       echo "nv-codec-headers ${major}.${minor} already present at ${dest}"
       return 0
     fi
-    echo "nv-codec-headers present but ${major:-?}.${minor:-?} (need 13.0); replacing..."
+    echo "nv-codec-headers present but ${major:-?}.${minor:-?} (need 13.1); replacing..."
     rm -rf "${dest}"
   fi
 
-  echo "Cloning FFmpeg nv-codec-headers sdk/13.0 into packaging tree..."
+  echo "Cloning FFmpeg nv-codec-headers ${tag} into packaging tree..."
   mkdir -p "$(dirname "${dest}")"
-  git clone --depth 1 --branch sdk/13.0 \
+  git clone --depth 1 --branch "${tag}" \
     https://github.com/FFmpeg/nv-codec-headers.git "${dest}"
   # Drop VCS metadata from the injected clone (not needed in the RPM tarball).
   rm -rf "${dest}/.git"
@@ -205,8 +236,9 @@ function write_build_deps_ffmpeg_tag_stamp() {
 }
 
 # .copr-ci excludes the whole build-deps tree. Replace that blanket exclude with
-# selective excludes so only nv-codec-headers (required by cmake) ships in the
-# tarball — even when a full local build-deps checkout is present (~1GB+).
+# selective excludes so package-lock.cmake (CPM declarations) and
+# FFmpeg/nv-codec-headers (ffmpeg.cmake fallback) ship in the tarball — even when
+# a full local build-deps checkout is present (~1GB+).
 function refine_build_deps_excludes() {
   local -n _out=$1
   local filtered=()
@@ -230,17 +262,19 @@ function refine_build_deps_excludes() {
     return 0
   fi
 
-  echo "Refining third-party/build-deps excludes (keep nv-codec-headers only)"
+  echo "Refining third-party/build-deps excludes (keep package-lock.cmake + nv-codec-headers)"
   _out+=("third-party/build-deps/.git")
 
   local item base
   for item in "${bd}"/*; do
     [[ -e "${item}" ]] || continue
     base="$(basename "${item}")"
-    if [[ "${base}" != "third-party" ]]; then
-      _out+=("third-party/build-deps/${base}")
-      echo "  Excluding: third-party/build-deps/${base}"
+    # Keep package-lock.cmake for CMakeLists include + CPMDeclarePackage(nv_codec_headers_13_1).
+    if [[ "${base}" == "third-party" || "${base}" == "package-lock.cmake" ]]; then
+      continue
     fi
+    _out+=("third-party/build-deps/${base}")
+    echo "  Excluding: third-party/build-deps/${base}"
   done
 
   if [[ -d "${bd}/third-party" ]]; then
@@ -269,6 +303,7 @@ function refine_build_deps_excludes() {
 }
 
 write_build_deps_ffmpeg_tag_stamp
+ensure_build_deps_package_lock
 ensure_nv_codec_headers
 refine_build_deps_excludes excluded_paths
 
