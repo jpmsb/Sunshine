@@ -35,7 +35,6 @@ BuildRequires: libcap-devel
 BuildRequires: libcurl-devel
 BuildRequires: libdrm-devel
 BuildRequires: libevdev-devel
-BuildRequires: libnotify-devel >= 0.8.0
 BuildRequires: libva-devel
 BuildRequires: libX11-devel
 BuildRequires: libxcb-devel
@@ -151,10 +150,6 @@ BuildRequires: gcc15-c++
 # Common runtime requirements
 Requires: miniupnpc >= 2.2.4
 Requires: which >= 2.21
-
-%if 0%{?fedora}
-Requires: libnotify >= 0.8.0
-%endif
 
 %if 0%{?fedora}
 # Fedora runtime requirements
