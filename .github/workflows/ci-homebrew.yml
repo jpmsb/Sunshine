@@ -202,7 +202,9 @@ jobs:
       - run: echo "::remove-matcher owner=gcc-strip3::"
 
       - name: Run Homebrew tests
-        if: matrix.release != true
+        # packaging/sunshine.rb only builds/installs test_sunshine when
+        # GITHUB_REPOSITORY == LizardByte/Sunshine (IS_UPSTREAM_REPO).
+        if: matrix.release != true && github.repository == 'LizardByte/Sunshine'
         env:
           ACTION_TESTPATH: ${{ steps.test.outputs.testpath }}
         run: |
