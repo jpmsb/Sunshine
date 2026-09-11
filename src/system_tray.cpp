@@ -324,6 +324,7 @@ namespace system_tray {
     notify_resumed,  ///< Show a stream-resumed notification.
     set_streaming_active,  ///< Toggle the streaming-active tray icon state.
     set_pausing_icon,  ///< Switch to the pausing tray icon.
+    update_playing,  ///< Refresh playing status text/icon/notification.
     update_pausing,  ///< Refresh pausing status text/icon.
     update_stopped,  ///< Refresh stopped/idle status text/icon.
     notify_pairing,  ///< Show a pairing-request notification.
@@ -755,13 +756,14 @@ namespace system_tray {
 
   static void apply_notify_pairing_request(const std::string &body) {
     clear_tray_notification_fields();
+    tray.icon = TRAY_ICON;
     tray_update(&tray);
 
     static std::string notification_title;
     static std::string notification_body;
     notification_title = localization::ui_string("troubleshooting", "pairing_request_title");
     notification_body = body;
-    tray.icon = TRAY_ICON_LOCKED;
+    tray.icon = TRAY_ICON;
     tray.notification_title = notification_title.c_str();
     tray.notification_text = notification_body.c_str();
     tray.notification_icon = TRAY_ICON_LOCKED;
@@ -770,8 +772,6 @@ namespace system_tray {
       tray.notification_cb = tray_pin_notification_cb;
     }
     tray_update(&tray);
-
-    clear_tray_notification_fields();
   }
 
   static void apply_clear_pairing_request_state() {
@@ -827,6 +827,21 @@ namespace system_tray {
           clear_tray_notification_fields();
           tray_update(&tray);
           break;
+        case tray_pending_kind_e::update_playing: {
+          clear_tray_notification_fields();
+          tray.icon = TRAY_ICON_PLAYING;
+          tray_update(&tray);
+
+          static std::string msg;
+          msg = std::format("Streaming started for {}", item.text);
+          tray.icon = TRAY_ICON_PLAYING;
+          tray.notification_title = "Stream Started";
+          tray.notification_text = msg.c_str();
+          tray.tooltip = msg.c_str();
+          tray.notification_icon = TRAY_ICON_PLAYING;
+          tray_update(&tray);
+          break;
+        }
         case tray_pending_kind_e::update_pausing: {
           clear_tray_notification_fields();
           tray.icon = TRAY_ICON_PAUSING;
@@ -840,7 +855,6 @@ namespace system_tray {
           tray.tooltip = msg.c_str();
           tray.notification_icon = TRAY_ICON_PAUSING;
           tray_update(&tray);
-          clear_tray_notification_fields();
           break;
         }
         case tray_pending_kind_e::update_stopped: {
@@ -856,7 +870,6 @@ namespace system_tray {
           tray.notification_text = msg.c_str();
           tray.tooltip = PROJECT_NAME;
           tray_update(&tray);
-          clear_tray_notification_fields();
           break;
         }
         case tray_pending_kind_e::notify_pairing:
@@ -1348,7 +1361,7 @@ namespace system_tray {
   }
 
   void update_tray_playing(std::string app_name) {
-    enqueue_tray_update(tray_pending_kind_e::set_streaming_active, std::move(app_name), true);
+    enqueue_tray_update(tray_pending_kind_e::update_playing, std::move(app_name));
   }
 
   void set_tray_streaming_active(bool active) {
