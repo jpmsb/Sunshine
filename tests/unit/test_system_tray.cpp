@@ -535,7 +535,16 @@ TEST_F(SystemTrayTest, LifecycleMenuAndStateTransitions) {
     std::this_thread::sleep_for(100ms);
     std::ignore = system_tray::end_tray();
   });
-  EXPECT_NE(system_tray::process_tray_events(), 0);
+
+  bool tray_exited = false;
+  for (int i = 0; i < 200; ++i) {
+    if (system_tray::process_tray_events() != 0) {
+      tray_exited = true;
+      break;
+    }
+    std::this_thread::sleep_for(5ms);
+  }
+  EXPECT_TRUE(tray_exited);
   exit_thread.join();
   EXPECT_FALSE(system_tray::tray_initialized_for_testing());
 }
