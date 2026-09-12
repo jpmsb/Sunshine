@@ -140,7 +140,17 @@ if(SUNSHINE_ENABLE_TRAY AND (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux
         set(SUNSHINE_TRAY_TEST_ICONS
                 sunshine-locked.svg
                 sunshine-playing.svg
-                sunshine-pausing.svg)
+                sunshine-pausing.svg
+                sunshine-disconnected.svg)
+
+        if(APPLE)
+            list(APPEND SUNSHINE_TRAY_TEST_ICONS
+                    logo-sunshine-16.png
+                    sunshine-playing-16.png
+                    sunshine-pausing-16.png
+                    sunshine-locked-16.png
+                    sunshine-disconnected-16.png)
+        endif()
 
         foreach(icon IN LISTS SUNSHINE_TRAY_TEST_ICONS)
             configure_file(
@@ -148,6 +158,21 @@ if(SUNSHINE_ENABLE_TRAY AND (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux
                     "${SUNSHINE_TRAY_TEST_ICON_DESTINATION_DIR}/${icon}"
                     COPYONLY)
         endforeach()
+
+        if(WIN32)
+            set(SUNSHINE_TRAY_TEST_WINDOWS_ICONS
+                    sunshine.ico
+                    sunshine-playing.ico
+                    sunshine-pausing.ico
+                    sunshine-locked.ico
+                    sunshine-disconnected.ico)
+            foreach(icon IN LISTS SUNSHINE_TRAY_TEST_WINDOWS_ICONS)
+                configure_file(
+                        "${SUNSHINE_TRAY_TEST_ICON_SOURCE_DIR}/${icon}"
+                        "${SUNSHINE_TRAY_TEST_ICON_DESTINATION_DIR}/${icon}"
+                        COPYONLY)
+            endforeach()
+        endif()
 
         add_library(sunshine_tray_test_helpers STATIC
                 ${SUNSHINE_TRAY_NOTIFICATION_UTILS}
