@@ -1348,7 +1348,15 @@ namespace system_tray {
 
   int end_tray() {
     auto &worker = tray_worker_thread();
-    worker.request_stop();
+    const bool stop_worker = worker.joinable() && worker.get_id() != std::this_thread::get_id();
+
+    if (stop_worker) {
+      // Request shutdown and wait for the tray thread to call tray_exit() itself.
+      // Qt tray objects are affinity-bound; destroying them from another thread
+      // can pass the test body and then segfault during process teardown on Windows.
+      worker.request_stop();
+      worker.join();
+    }
 
     {
       const std::scoped_lock lock(tray_state_mutex());
@@ -1357,9 +1365,6 @@ namespace system_tray {
       }
     }
 
-    if (worker.joinable() && worker.get_id() != std::this_thread::get_id()) {
-      worker.join();
-    }
     return 0;
   }
 
@@ -1480,7 +1485,9 @@ namespace system_tray {
 
     {
       const std::scoped_lock lock(tray_state_mutex());
-      tray_initialized_state().store(false);
+      if (tray_initialized_state().exchange(false)) {
+        tray_exit();
+      }
     }
 
     BOOST_LOG(info) << "System tray thread ended"sv;
