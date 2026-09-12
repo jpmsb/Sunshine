@@ -592,6 +592,11 @@ namespace system_tray {
 
     const auto sessions = rtsp_stream::list_active_sessions();
 
+    // Keep dynamic string storage stable while menu entries hold c_str() pointers.
+    tray_menu_strings.reserve(sessions.size() * 3);
+    tray_session_submenus.reserve(sessions.size());
+    tray_root_menu.reserve(16 + sessions.size());
+
     tray_root_menu.push_back({.text = "Open Sunshine", .cb = tray_open_ui_cb});
     tray_root_menu.push_back({.text = "-"});
   #ifdef _WIN32
@@ -599,16 +604,14 @@ namespace system_tray {
     tray_root_menu.push_back({.text = "-"});
   #endif
 
-    tray_menu_strings.emplace_back("Connected Clients");
     tray_root_menu.push_back({
-      .text = tray_menu_strings.back().c_str(),
+      .text = "Connected Clients",
       .disabled = 1,
     });
 
     if (sessions.empty()) {
-      tray_menu_strings.emplace_back("(No clients connected)");
       tray_root_menu.push_back({
-        .text = tray_menu_strings.back().c_str(),
+        .text = "(No clients connected)",
         .disabled = 1,
       });
     } else {
