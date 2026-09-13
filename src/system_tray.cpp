@@ -907,6 +907,9 @@ namespace system_tray {
     virtualhid_driver_notification_text_storage().clear();
     virtualhid_license_menu = initial_virtualhid_license_menu();
     #endif
+    // Fork builds the root menu dynamically (Connected Clients, etc.). Keep a valid
+    // menu wired for unit tests that inspect tray.menu before init_tray().
+    rebuild_tray_root_menu();
   }
   #endif
 
@@ -1046,6 +1049,9 @@ namespace system_tray {
     const std::scoped_lock lock(tray_state_mutex());
     clear_tray_notification();
     rebuild_virtualhid_license_menu(license);
+    if (tray.menu == nullptr) {
+      rebuild_tray_root_menu();
+    }
 
     if (config::input.gamepad_driver.empty()) {
       tray.notification_title = "Choose a Gamepad Driver";
