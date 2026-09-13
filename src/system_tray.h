@@ -5,6 +5,7 @@
 #pragma once
 
 // standard includes
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -255,6 +256,14 @@ namespace system_tray {
    * @brief Restore the persistent tray data to its initial state between tests.
    */
   void reset_tray_data_for_testing();
+
+  /**
+   * @brief Wait until queued tray updates have been applied by the tray worker.
+   *
+   * @param timeout Maximum time to wait.
+   * @return true if the pending queue drained before the timeout; otherwise, false.
+   */
+  bool wait_for_pending_tray_updates_for_testing(std::chrono::milliseconds timeout = std::chrono::seconds {2});
 
   /**
    * @brief Resolve a tray resource path using the production platform logic.
