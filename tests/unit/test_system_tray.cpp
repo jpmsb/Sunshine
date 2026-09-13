@@ -75,7 +75,25 @@ namespace {
     }
     return false;
   }
+
+  /**
+   * @brief Wait for asynchronously queued tray updates to become visible.
+   */
+  void wait_for_tray_updates() {
+    EXPECT_TRUE(system_tray::wait_for_pending_tray_updates_for_testing(2s));
+  }
   #endif
+
+  /**
+   * @brief Wait for tray state transitions on the platform's tray execution path.
+   */
+  void sync_tray_updates() {
+  #ifdef _WIN32
+    wait_for_tray_updates();
+  #else
+    pump_tray_events(1, 0ms);
+  #endif
+  }
 
   #ifdef _WIN32
   /**
@@ -227,19 +245,19 @@ namespace {
     verify_state(0, PROJECT_NAME, nullptr, nullptr, std::nullopt, false);
 
     system_tray::update_tray_playing("Moonlight");
-    pump_tray_events(1, 0ms);
+    sync_tray_updates();
     verify_state(2, "Streaming started for Moonlight", "Stream Started", "Streaming started for Moonlight", 2, false);
 
     system_tray::update_tray_pausing("Moonlight");
-    pump_tray_events(1, 0ms);
+    sync_tray_updates();
     verify_state(3, "Streaming paused for Moonlight", "Stream Paused", "Streaming paused for Moonlight", 3, false);
 
     system_tray::update_tray_stopped("Moonlight");
-    pump_tray_events(1, 0ms);
+    sync_tray_updates();
     verify_state(0, PROJECT_NAME, "Application Stopped", "Application Moonlight successfully stopped", 0, false);
 
     system_tray::update_tray_require_pin();
-    pump_tray_events(1, 0ms);
+    sync_tray_updates();
     verify_state(0, PROJECT_NAME, "Pairing Request", "Click here to enter the PIN.", 1, true);
   }
   #endif
@@ -669,27 +687,19 @@ TEST_F(SystemTrayVisualTest, CapturesIconTooltipNotificationsAndMenu) {
 
   dismissNativeNotifications();
   system_tray::update_tray_playing("Moonlight");
-    #ifndef _WIN32
-  pump_tray_events(1, 0ms);
-    #endif
+  sync_tray_updates();
   verify_state(2, "Streaming started for Moonlight", "Stream Started", "Streaming started for Moonlight", 2, false);
   capture_notification("sunshine_tray_streaming");
   system_tray::update_tray_pausing("Moonlight");
-    #ifndef _WIN32
-  pump_tray_events(1, 0ms);
-    #endif
+  sync_tray_updates();
   verify_state(3, "Streaming paused for Moonlight", "Stream Paused", "Streaming paused for Moonlight", 3, false);
   capture_notification("sunshine_tray_paused");
   system_tray::update_tray_stopped("Moonlight");
-    #ifndef _WIN32
-  pump_tray_events(1, 0ms);
-    #endif
+  sync_tray_updates();
   verify_state(0, PROJECT_NAME, "Application Stopped", "Application Moonlight successfully stopped", 0, false);
   capture_notification("sunshine_tray_stopped");
   system_tray::update_tray_require_pin();
-    #ifndef _WIN32
-  pump_tray_events(1, 0ms);
-    #endif
+  sync_tray_updates();
   verify_state(0, PROJECT_NAME, "Pairing Request", "Click here to enter the PIN.", 1, true);
   capture_notification("sunshine_tray_pairing_request");
 
