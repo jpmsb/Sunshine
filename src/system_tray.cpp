@@ -17,6 +17,7 @@
   // standard includes
   #include <array>
   #include <atomic>
+  #include <chrono>
   #include <csignal>
   #include <cstddef>
   #include <deque>
@@ -343,6 +344,7 @@ namespace system_tray {
   };
 
   static std::atomic<bool> tray_has_pending = false;
+  static std::atomic<bool> tray_pending_applying = false;
   static std::mutex tray_pending_mutex;
   static std::deque<tray_pending_item_t> tray_pending_queue;
 
@@ -793,6 +795,11 @@ namespace system_tray {
       return;
     }
 
+    tray_pending_applying.store(true);
+    auto clear_applying = util::fail_guard([]() {
+      tray_pending_applying.store(false);
+    });
+
     std::deque<tray_pending_item_t> pending;
     {
       const std::lock_guard lock {tray_pending_mutex};
@@ -892,6 +899,22 @@ namespace system_tray {
 
   bool tray_initialized_for_testing() {
     return tray_initialized_state().load();
+  }
+
+  bool wait_for_pending_tray_updates_for_testing(std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+      bool pending = tray_has_pending.load() || tray_pending_applying.load();
+      if (!pending) {
+        const std::lock_guard lock {tray_pending_mutex};
+        pending = !tray_pending_queue.empty();
+      }
+      if (!pending) {
+        return true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds {10});
+    }
+    return false;
   }
 
   void reset_tray_data_for_testing() {
@@ -1208,19 +1231,24 @@ namespace system_tray {
    * @brief Resolve tray icons against the current executable or application bundle.
    */
   void resolve_tray_icon_paths() {
-    configure_tray_icon_paths();
-
   #if defined(_WIN32) || defined(__APPLE__)
+    // Capture the notification icon index before reconfigure. notification_icon often
+    // aliases allIconPaths/c_str() storage that configure_tray_icon_paths() replaces.
     std::optional<int> notification_icon_index;
     if (tray.notification_icon != nullptr) {
       for (int index = 0; index < tray.iconPathCount; ++index) {
-        if (std::string_view {tray.notification_icon} == tray.allIconPaths[index]) {
+        if (tray.allIconPaths[index] != nullptr &&
+            std::string_view {tray.notification_icon} == tray.allIconPaths[index]) {
           notification_icon_index = index;
           break;
         }
       }
     }
+  #endif
 
+    configure_tray_icon_paths();
+
+  #if defined(_WIN32) || defined(__APPLE__)
     for (int index = 0; index < tray.iconPathCount; ++index) {
       tray.allIconPaths[index] = GetResourcePath(tray.allIconPaths[index]);
     }
@@ -1357,9 +1385,17 @@ namespace system_tray {
     const bool stop_worker = worker.joinable() && worker.get_id() != std::this_thread::get_id();
 
     if (stop_worker) {
-      // Request shutdown and wait for the tray thread to call tray_exit() itself.
-      // Qt tray objects are affinity-bound; destroying them from another thread
-      // can pass the test body and then segfault during process teardown on Windows.
+      // Unblock a nested QMenu::exec() on the tray thread before joining. tray_exit()
+      // is marshalled onto the Qt thread and can run inside that nested event loop.
+      // Without this, request_stop() alone deadlocks: the worker never rechecks the
+      // stop token until exec() returns, and exec() never returns until the menu closes.
+      if (tray_initialized_state().load()) {
+        tray_exit();
+      }
+
+      // Wait for the tray thread to finish its own cleanup. Qt tray objects are
+      // affinity-bound; destroying them from another thread can pass the test body
+      // and then segfault during process teardown on Windows.
       worker.request_stop();
       worker.join();
     }
