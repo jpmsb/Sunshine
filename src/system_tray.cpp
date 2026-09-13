@@ -919,6 +919,10 @@ namespace system_tray {
 
   void reset_tray_data_for_testing() {
     const std::scoped_lock lock(tray_state_mutex());
+    // Ensure allIconPaths point at live tray_icon_* storage. Virtual HID notifications
+    // assign tray.allIconPaths[4]; leaving those slots nullptr makes EXPECT_STREQ(nullptr,
+    // nullptr) pass and then resolve_tray_icon_paths() drop the notification icon.
+    configure_tray_icon_paths();
     tray.icon = tray.allIconPaths[0];
     tray.tooltip = PROJECT_NAME;
     tray.notification_icon = nullptr;
@@ -1243,6 +1247,14 @@ namespace system_tray {
           break;
         }
       }
+  #ifdef _WIN32
+      // Also match the Virtual HID icon string storage directly. Updates may assign
+      // TRAY_ICON_VIRTUALHID / allIconPaths[4] before GetResourcePath rewrites slots.
+      if (!notification_icon_index.has_value() && !tray_icon_virtualhid.empty() &&
+          std::string_view {tray.notification_icon} == tray_icon_virtualhid) {
+        notification_icon_index = 4;
+      }
+  #endif
     }
   #endif
 
