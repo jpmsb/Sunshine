@@ -422,6 +422,7 @@ TEST_F(SystemTrayTest, PromptsForUnsetGamepadDriverEvenWhenLicensed) {
     tray_data.notification_text,
     "Choose a driver in Input settings. Virtual HID Driver is a paid upgrade; ViGEmBus is limited and has reached end of life."
   );
+  ASSERT_NE(tray_data.allIconPaths[4], nullptr);
   EXPECT_STREQ(tray_data.notification_icon, tray_data.allIconPaths[4]);
   EXPECT_NE(tray_data.notification_cb, nullptr);
 }
@@ -437,10 +438,12 @@ TEST_F(SystemTrayTest, NotifiesWhenVirtualHidDriverIsUnsupported) {
   );
   EXPECT_STREQ(tray_data.notification_title, "Update Virtual HID Driver");
   EXPECT_STREQ(tray_data.notification_text, expected_notification.c_str());
+  ASSERT_NE(tray_data.allIconPaths[4], nullptr);
   EXPECT_STREQ(tray_data.notification_icon, tray_data.allIconPaths[4]);
   EXPECT_NE(tray_data.notification_cb, nullptr);
 
   system_tray::resolve_tray_icon_paths_for_testing();
+  ASSERT_NE(tray_data.allIconPaths[4], nullptr);
   EXPECT_STREQ(tray_data.notification_icon, tray_data.allIconPaths[4]);
 }
 
@@ -514,10 +517,12 @@ TEST_P(UnlicensedVirtualHidTrayTest, PreparesMenuAndStartupNotification) {
     tray_data.notification_text,
     "Get or manage a license, or use the limited, end-of-life ViGEmBus driver."
   );
+  ASSERT_NE(tray_data.allIconPaths[4], nullptr);
   EXPECT_STREQ(tray_data.notification_icon, tray_data.allIconPaths[4]);
   EXPECT_NE(tray_data.notification_cb, nullptr);
 
   system_tray::resolve_tray_icon_paths_for_testing();
+  ASSERT_NE(tray_data.allIconPaths[4], nullptr);
   EXPECT_STREQ(tray_data.notification_icon, tray_data.allIconPaths[4]);
 
   system_tray::update_tray_virtualhid_license(license, false);
