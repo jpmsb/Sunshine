@@ -131,7 +131,7 @@ resort suggestion.
 ### Hardware Encoders throttle/drop FPS during high GPU load
 Capture methods (`wlgrab`) or encoders (`nvenc`, `vaapi`) that utilize EGL contexts may exhibit FPS drops
 in conjunction with a Sunshine installation that runs in a sandboxed or reduced permissions state
-(Flatpak, AppImage, or when using Portal capture) due to the lack of active CAP_SYS_NICE process permissions
+(Flatpak, AppImage packages) due to the lack of active CAP_SYS_NICE process permissions
 needed to set up high priority EGL contexts.
 
 To check if you are affected by this issue, look out for this message in your Sunshine log:
@@ -142,12 +142,12 @@ Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missin
 > [!IMPORTANT]
 > Switching to Vulkan encoding should resolve the issue for the majority of configurations, but refer to this
 > table for recommended configurations (especially if Vulkan encoding is not supported on your system):
-> | Desktop Environment | Vulkan Supported? | Recommended Sunshine Install Type | Recommended Capture & Encoder Configuration       |
-> |:--------------------|-------------------|-----------------------------------|--------------------------------------------------:|
-> | KDE Plasma          | Yes               | Any                               | `portal` or `kwin` capture with `vulkan` encoding |
-> | KDE Plasma          | No                | Non-Sandboxed                     | `kwin` capture with `vaapi`/`nvenc` encoding      |
-> | GNOME / other       | Yes               | Any                               | `portal` capture with `vulkan` encoding           |
-> | GNOME / other       | No                | Non-Sandboxed                     | `kms` capture with `vaapi`/`nvenc` encoding       |
+> | Desktop Environment | Vulkan Supported? | Recommended Sunshine Install Type | Recommended Capture & Encoder Configuration              |
+> |:--------------------|-------------------|-----------------------------------|---------------------------------------------------------:|
+> | KDE Plasma          | Yes               | Any                               | `portal` or `kwin` capture with `vulkan` encoding        |
+> | KDE Plasma          | No                | Non-Sandboxed                     | `portal` or `kwin` capture with `vaapi`/`nvenc` encoding |
+> | GNOME / other       | Yes               | Any                               | `portal` capture with `vulkan` encoding                  |
+> | GNOME / other       | No                | Non-Sandboxed                     | `portal` capture with `vaapi`/`nvenc` encoding           |
 
 ### Hardware Encoding fails
 Due to legal concerns, Mesa has disabled hardware decoding and encoding by default.
@@ -338,7 +338,7 @@ for a driver-backed Raw Input keyboard and mouse plus full virtual gamepad suppo
 for Xbox 360 and DualShock 4 support that has reached end of life. If you use the
 [ViGEmBus fallback](https://github.com/nefarius/ViGEmBus/releases/latest), you must use version 1.17 or newer.
 
-When Virtual HID Driver is used, Sunshine requires version `2026.905.2300.20` or newer.
+When Virtual HID Driver is used, Sunshine requires version `2026.914.1218.10` or newer.
 
 Virtual HID Driver adds Xbox One, Xbox Series, DualSense, Nintendo Switch Pro, and Generic gamepads, plus advanced
 controller features such as motion, touchpads, LEDs, and adaptive triggers when supported. Unlike the discontinued

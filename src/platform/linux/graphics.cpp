@@ -4,7 +4,9 @@
  */
 // standard includes
 #include <fcntl.h>
+#include <future>
 #include <mutex>
+#include <stdexcept>
 
 // local includes
 #include "graphics.h"
@@ -333,6 +335,188 @@ namespace gbm {
 
 namespace egl {
 
+  namespace {  // Keep privileged implementation details anonymous/local to this translation unit
+
+#if !defined(__FreeBSD__)
+    /**
+     * @brief Temporarily owns CAP_SYS_NICE while creating EGL contexts.
+     *
+     * Uses `capability_mutex` and re-reads process capabilities on drop so a concurrent
+     * portal privilege drop cannot be undone by a stale `cap_set_proc` snapshot.
+     */
+    class cap_sys_nice {
+    public:
+      /**
+       * @brief Check whether `CAP_SYS_NICE` is currently effective.
+       *
+       * @return `true` when the capability is set in the effective set.
+       */
+      static bool verify_cap_sys_nice() {
+        std::lock_guard lock(platf::capability_mutex());
+        cap_t caps = cap_get_proc();
+        if (!caps) {
+          BOOST_LOG(debug) << "Failed to get capabilities while verifying CAP_SYS_NICE"sv;
+          return false;
+        }
+
+        cap_value_t sys_nice = CAP_SYS_NICE;
+        cap_flag_value_t value;
+        if (cap_get_flag(caps, sys_nice, CAP_EFFECTIVE, &value)) {
+          BOOST_LOG(debug) << "Failed to read CAP_SYS_NICE effective capability"sv;
+          cap_free(caps);
+          return false;
+        }
+        cap_free(caps);
+
+        if (value != CAP_SET) {
+          BOOST_LOG(debug) << "Failed to verify CAP_SYS_NICE effective capability"sv;
+          return false;
+        }
+
+        return true;
+      }
+
+      /**
+       * @brief Raise `CAP_SYS_NICE` in the effective set for high-priority EGL contexts.
+       */
+      cap_sys_nice() {
+        std::lock_guard lock(platf::capability_mutex());
+        cap_t caps = cap_get_proc();
+        if (!caps) {
+          BOOST_LOG(debug) << "Failed to get capabilities for CAP_SYS_NICE"sv;
+          return;
+        }
+
+        cap_value_t sys_nice = CAP_SYS_NICE;
+        if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &sys_nice, CAP_SET) || cap_set_proc(caps)) {
+          BOOST_LOG(debug) << "Failed to gain CAP_SYS_NICE"sv;
+        }
+        cap_free(caps);
+      }
+
+      /**
+       * @brief Clear `CAP_SYS_NICE` from the current effective set.
+       */
+      ~cap_sys_nice() {
+        std::lock_guard lock(platf::capability_mutex());
+        cap_t caps = cap_get_proc();
+        if (!caps) {
+          BOOST_LOG(debug) << "Failed to get capabilities while dropping CAP_SYS_NICE"sv;
+          return;
+        }
+
+        cap_value_t sys_nice = CAP_SYS_NICE;
+        if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &sys_nice, CAP_CLEAR) || cap_set_proc(caps)) {
+          BOOST_LOG(debug) << "Failed to drop CAP_SYS_NICE"sv;
+        }
+        cap_free(caps);
+      }
+    };
+#endif
+
+    /**
+     * @brief Reports that the privileged EGL worker rejected a task.
+     */
+    class privileged_egl_worker_stopped final: public std::runtime_error {
+    public:
+      using std::runtime_error::runtime_error;  ///< Inherit standard runtime error constructors.
+    };
+
+    class privileged_egl_worker {
+    public:
+      static void ensure_started() {
+        instance();
+      }
+
+      static EGLContext eglCreateContext_privileged(EGLDisplay display, EGLConfig config, EGLContext share_context, EGLint const *attrib_list, bool &nice_warning) {
+        try {
+          return instance().run([display, config, share_context, attrib_list, &nice_warning] {
+            nice_warning = false;
+#if !defined(__FreeBSD__)
+            nice_warning = !egl::cap_sys_nice::verify_cap_sys_nice();
+#endif
+
+            if (!eglBindAPI(EGL_OPENGL_API)) {
+              BOOST_LOG(error) << "Couldn't bind API in privileged thread: ["sv << util::hex(eglGetError()).to_string_view() << ']';
+              return EGL_NO_CONTEXT;
+            }
+            EGLContext privileged_ctx = eglCreateContext(display, config, share_context, attrib_list);
+            if (privileged_ctx == EGL_NO_CONTEXT) {
+              BOOST_LOG(error) << "Couldn't create EGL context in privileged thread: ["sv << util::hex(eglGetError()).to_string_view() << ']';
+            }
+            return privileged_ctx;
+          });
+        } catch (const privileged_egl_worker_stopped &e) {
+          BOOST_LOG(error) << "Couldn't execute privileged EGL context creation: "sv << e.what();
+          return EGL_NO_CONTEXT;
+        }
+      }
+
+    private:
+      static privileged_egl_worker &instance() {
+        static privileged_egl_worker w;
+        return w;
+      }
+
+      privileged_egl_worker():
+          thread_ {[this] {
+            sigset_t all;
+            sigfillset(&all);
+            if (pthread_sigmask(SIG_BLOCK, &all, nullptr) != 0) {
+              BOOST_LOG(error) << "Failed to block signals in egl_worker"sv;
+              queue_.stop();
+              return;
+            }
+
+            platf::set_thread_name("egl_worker");
+            for (;;) {
+              auto task = queue_.pop();
+              if (!task) {
+                break;
+              }
+              (*task)();
+            }
+          }} {
+      }
+
+      ~privileged_egl_worker() {
+        queue_.stop();
+      }
+
+      template<class F>
+      auto run(F &&f) -> std::invoke_result_t<F> {
+        using R = std::invoke_result_t<F>;
+        auto task = std::make_shared<std::packaged_task<R()>>(
+          [f = std::forward<F>(f)]() mutable -> R {
+#if !defined(__FreeBSD__)
+            cap_sys_nice nice;
+#endif
+            return f();
+          }
+        );
+        auto fut = task->get_future();
+
+        if (!queue_.raise([task]() mutable {
+              (*task)();
+            })) {
+          throw privileged_egl_worker_stopped {"privileged_egl_worker: task rejected (worker stopping)"};
+        }
+
+        return fut.get();
+      }
+
+      safe::queue_t<std::function<void()>> queue_ {32, safe::queue_t<std::function<void()>>::overflow_policy_e::reject};
+      std::jthread thread_;
+    };
+  }  // namespace
+
+  /**
+   * @brief Allows the EGL privileged worker thread to be constructed early.
+   */
+  void ensure_privileged_egl_worker_started() {
+    privileged_egl_worker::ensure_started();
+  }
+
   /**
    * @brief Log EGL failure details and return an error code.
    */
@@ -420,23 +604,6 @@ namespace egl {
    */
   std::optional<ctx_t> make_ctx(display_t::pointer display) {
     bool nice_warning = false;
-#if !defined(__FreeBSD__)
-    {
-      std::lock_guard lock(platf::capability_mutex());
-      cap_t caps = cap_get_proc();
-      if (!caps) {
-        BOOST_LOG(debug) << "Failed to get capabilities for CAP_SYS_NICE"sv;
-        nice_warning = true;
-      } else {
-        cap_value_t sys_nice = CAP_SYS_NICE;
-        if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &sys_nice, CAP_SET) || cap_set_proc(caps)) {
-          BOOST_LOG(debug) << "Failed to gain CAP_SYS_NICE"sv;
-          nice_warning = true;
-        }
-        cap_free(caps);
-      }
-    }
-#endif
 
     constexpr int conf_attr[] {
       EGL_RENDERABLE_TYPE,
@@ -470,9 +637,8 @@ namespace egl {
     }
     attr.push_back(EGL_NONE);
 
-    EGLContext raw_ctx = eglCreateContext(display, conf, EGL_NO_CONTEXT, attr.data());
+    EGLContext raw_ctx = egl::privileged_egl_worker::eglCreateContext_privileged(display, conf, EGL_NO_CONTEXT, attr.data(), nice_warning);
     if (raw_ctx == EGL_NO_CONTEXT) {
-      BOOST_LOG(error) << "Couldn't create EGL context: ["sv << util::hex(eglGetError()).to_string_view() << ']';
       return std::nullopt;
     }
 
@@ -525,20 +691,6 @@ namespace egl {
     BOOST_LOG(debug) << "GL: shader: "sv << gl_shader;
 
     gl::ctx.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-#if !defined(__FreeBSD__)
-    {
-      std::lock_guard lock(platf::capability_mutex());
-      cap_t caps = cap_get_proc();
-      if (caps) {
-        cap_value_t sys_nice = CAP_SYS_NICE;
-        if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &sys_nice, CAP_CLEAR) || cap_set_proc(caps)) {
-          BOOST_LOG(debug) << "Failed to drop CAP_SYS_NICE"sv;
-        }
-        cap_free(caps);
-      }
-    }
-#endif
 
     return ctx;
   }
