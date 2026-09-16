@@ -47,7 +47,6 @@
 // lib includes
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ip/host_name.hpp>
-#include <boost/process/v1.hpp>
 #include <fcntl.h>
 #include <lizardbyte/common/env.h>
 #include <unistd.h>
@@ -61,6 +60,7 @@
 // local includes
 #include "graphics.h"
 #include "misc.h"
+#include "src/boost_process_compat.h"
 #include "src/config.h"
 #include "src/entry_handler.h"
 #include "src/logging.h"
