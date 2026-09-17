@@ -1,11 +1,4 @@
-<!DOCTYPE html>
-<html lang="en" data-bs-theme="auto">
-
-<head>
-  <%- header %>
-</head>
-
-<body id="app" v-cloak>
+<template>
   <Navbar></Navbar>
   <div id="content" class="container">
     <h1 class="my-4">{{ $t('devices.title') }}</h1>
@@ -131,226 +124,219 @@
       </ul>
     </div>
   </div>
-</body>
+</template>
 
-<script type="module">
-  import { createApp } from 'vue'
-  import { initApp } from './init'
-  import Navbar from './Navbar.vue'
-  import { apiFetch } from './fetch_utils'
-  import {
+<script>
+import Navbar from './Navbar.vue'
+import { apiFetch } from './fetch_utils'
+import {
+  AlertCircle,
+  CheckCircle,
+  Trash2,
+} from '@lucide/vue'
+
+export default {
+  components: {
+    Navbar,
     AlertCircle,
     CheckCircle,
     Trash2,
-  } from '@lucide/vue'
-
-  let app = createApp({
-    components: {
-      Navbar,
-      AlertCircle,
-      CheckCircle,
-      Trash2,
+  },
+  data() {
+    return {
+      clients: [],
+      clientNames: {},
+      connectedSessions: [],
+      sessionsInterval: null,
+      showApplyMessage: false,
+      unpairAllPressed: false,
+      unpairAllStatus: null,
+      nameSaveStatus: null,
+    }
+  },
+  created() {
+    this.sessionsInterval = setInterval(() => {
+      this.refreshConnectedSessions()
+    }, 3000)
+    this.refreshClients()
+    this.refreshConnectedSessions()
+  },
+  beforeUnmount() {
+    clearInterval(this.sessionsInterval)
+  },
+  methods: {
+    refreshClients() {
+      fetch('./api/clients/list')
+        .then((response) => response.json())
+        .then((response) => {
+          if (response.status === true && response.named_certs && response.named_certs.length) {
+            this.clients = response.named_certs.sort((a, b) => {
+              return (a.name.toLowerCase() > b.name.toLowerCase() || a.name === '' ? 1 : -1)
+            })
+            for (const client of this.clients) {
+              if (!(client.uuid in this.clientNames)) {
+                this.clientNames[client.uuid] = client.name
+              }
+            }
+          } else {
+            this.clients = []
+          }
+        })
     },
-    inject: ['i18n'],
-    data() {
+    refreshConnectedSessions() {
+      fetch('./api/clients/sessions')
+        .then((response) => response.json())
+        .then((response) => {
+          if (response.status === true && response.sessions) {
+            this.connectedSessions = response.sessions.sort((a, b) => {
+              return a.label.toLowerCase() > b.label.toLowerCase() ? 1 : -1
+            })
+          } else {
+            this.connectedSessions = []
+          }
+        })
+    },
+    activeSessionForClient(uuid) {
+      return this.connectedSessions.find((session) => session.uuid === uuid)
+    },
+    sessionDisplayName(session) {
+      const name = (session.name || '').trim()
+      if (name) {
+        return name
+      }
+
+      const label = (session.label || '').trim()
+      const separator = ' - '
+      const separatorIndex = label.lastIndexOf(separator)
+      if (separatorIndex !== -1) {
+        const nickname = label.slice(separatorIndex + separator.length).trim()
+        if (nickname) {
+          return nickname
+        }
+      }
+
+      return this.$t('troubleshooting.unpair_single_unknown')
+    },
+    clientEndpoint(client) {
+      const active = this.activeSessionForClient(client.uuid)
+      if (active) {
+        return {
+          address: active.address || '—',
+          port: active.port || '—',
+        }
+      }
+      const address = client.last_address || ''
+      const port = client.last_port || 0
       return {
-        clients: [],
-        clientNames: {},
-        connectedSessions: [],
-        sessionsInterval: null,
-        showApplyMessage: false,
-        unpairAllPressed: false,
-        unpairAllStatus: null,
-        nameSaveStatus: null,
+        address: address || '—',
+        port: port ? port : '—',
       }
     },
-    created() {
-      this.sessionsInterval = setInterval(() => {
-        this.refreshConnectedSessions()
-      }, 3000)
-      this.refreshClients()
-      this.refreshConnectedSessions()
+    formatPairedAt(client) {
+      if (!client.paired_at) {
+        return this.$t('devices.unknown_pairing_date')
+      }
+      const date = new Date(client.paired_at)
+      if (Number.isNaN(date.getTime())) {
+        return client.paired_at
+      }
+      return date.toLocaleString()
     },
-    beforeUnmount() {
-      clearInterval(this.sessionsInterval)
-    },
-    methods: {
-      refreshClients() {
-        fetch('./api/clients/list')
-          .then((response) => response.json())
-          .then((response) => {
-            if (response.status === true && response.named_certs && response.named_certs.length) {
-              this.clients = response.named_certs.sort((a, b) => {
-                return (a.name.toLowerCase() > b.name.toLowerCase() || a.name === '' ? 1 : -1)
-              })
-              for (const client of this.clients) {
-                if (!(client.uuid in this.clientNames)) {
-                  this.clientNames[client.uuid] = client.name
-                }
-              }
-            } else {
-              this.clients = []
-            }
-          })
-      },
-      refreshConnectedSessions() {
-        fetch('./api/clients/sessions')
-          .then((response) => response.json())
-          .then((response) => {
-            if (response.status === true && response.sessions) {
-              this.connectedSessions = response.sessions.sort((a, b) => {
-                return a.label.toLowerCase() > b.label.toLowerCase() ? 1 : -1
-              })
-            } else {
-              this.connectedSessions = []
-            }
-          })
-      },
-      activeSessionForClient(uuid) {
-        return this.connectedSessions.find((session) => session.uuid === uuid)
-      },
-      sessionDisplayName(session) {
-        const name = (session.name || '').trim()
-        if (name) {
-          return name
-        }
-
-        const label = (session.label || '').trim()
-        const separator = ' - '
-        const separatorIndex = label.lastIndexOf(separator)
-        if (separatorIndex !== -1) {
-          const nickname = label.slice(separatorIndex + separator.length).trim()
-          if (nickname) {
-            return nickname
-          }
-        }
-
-        return this.$t('troubleshooting.unpair_single_unknown')
-      },
-      clientEndpoint(client) {
-        const active = this.activeSessionForClient(client.uuid)
-        if (active) {
-          return {
-            address: active.address || '—',
-            port: active.port || '—',
-          }
-        }
-        const address = client.last_address || ''
-        const port = client.last_port || 0
-        return {
-          address: address || '—',
-          port: port ? port : '—',
-        }
-      },
-      formatPairedAt(client) {
-        if (!client.paired_at) {
-          return this.$t('devices.unknown_pairing_date')
-        }
-        const date = new Date(client.paired_at)
-        if (Number.isNaN(date.getTime())) {
-          return client.paired_at
-        }
-        return date.toLocaleString()
-      },
-      saveClientName(uuid) {
-        const name = (this.clientNames[uuid] || '').trim()
-        apiFetch('./api/clients/update', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ uuid, name }),
-        })
-          .then((response) => response.json())
-          .then((response) => {
-            this.nameSaveStatus = response.status === true
-            if (response.status === true) {
-              this.refreshClients()
-            }
-            setTimeout(() => {
-              this.nameSaveStatus = null
-            }, 5000)
-          })
-          .catch(() => {
-            this.nameSaveStatus = false
-            setTimeout(() => {
-              this.nameSaveStatus = null
-            }, 5000)
-          })
-      },
-      toggleClient(uuid, enabled) {
-        apiFetch('./api/clients/update', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ uuid, enabled }),
-        }).then(() => {
-          this.refreshClients()
-        })
-      },
-      unpairSingle(uuid) {
-        apiFetch('./api/clients/unpair', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ uuid }),
-        }).then(() => {
-          this.showApplyMessage = true
-          delete this.clientNames[uuid]
-          this.refreshClients()
-        })
-      },
-      unpairAll() {
-        this.unpairAllPressed = true
-        apiFetch('./api/clients/unpair-all', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        })
-          .then((response) => response.json())
-          .then((response) => {
-            this.unpairAllPressed = false
-            this.unpairAllStatus = response.status
-            this.clientNames = {}
-            setTimeout(() => {
-              this.unpairAllStatus = null
-            }, 5000)
+    saveClientName(uuid) {
+      const name = (this.clientNames[uuid] || '').trim()
+      apiFetch('./api/clients/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ uuid, name }),
+      })
+        .then((response) => response.json())
+        .then((response) => {
+          this.nameSaveStatus = response.status === true
+          if (response.status === true) {
             this.refreshClients()
-          })
-      },
-      toggleSessionPause(session) {
-        const endpoint = session.paused ? './api/clients/resume' : './api/clients/pause'
-        apiFetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ session_id: session.session_id }),
-        }).then(() => {
-          this.refreshConnectedSessions()
+          }
+          setTimeout(() => {
+            this.nameSaveStatus = null
+          }, 5000)
         })
-      },
-      disconnectSession(sessionId) {
-        apiFetch('./api/clients/disconnect', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ session_id: sessionId }),
-        }).then(() => {
-          this.refreshConnectedSessions()
+        .catch(() => {
+          this.nameSaveStatus = false
+          setTimeout(() => {
+            this.nameSaveStatus = null
+          }, 5000)
         })
-      },
-      clickedApplyBanner() {
-        this.showApplyMessage = false
-      },
     },
-  })
-
-  initApp(app)
+    toggleClient(uuid, enabled) {
+      apiFetch('./api/clients/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ uuid, enabled }),
+      }).then(() => {
+        this.refreshClients()
+      })
+    },
+    unpairSingle(uuid) {
+      apiFetch('./api/clients/unpair', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ uuid }),
+      }).then(() => {
+        this.showApplyMessage = true
+        delete this.clientNames[uuid]
+        this.refreshClients()
+      })
+    },
+    unpairAll() {
+      this.unpairAllPressed = true
+      apiFetch('./api/clients/unpair-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+        .then((response) => response.json())
+        .then((response) => {
+          this.unpairAllPressed = false
+          this.unpairAllStatus = response.status
+          this.clientNames = {}
+          setTimeout(() => {
+            this.unpairAllStatus = null
+          }, 5000)
+          this.refreshClients()
+        })
+    },
+    toggleSessionPause(session) {
+      const endpoint = session.paused ? './api/clients/resume' : './api/clients/pause'
+      apiFetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ session_id: session.session_id }),
+      }).then(() => {
+        this.refreshConnectedSessions()
+      })
+    },
+    disconnectSession(sessionId) {
+      apiFetch('./api/clients/disconnect', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ session_id: sessionId }),
+      }).then(() => {
+        this.refreshConnectedSessions()
+      })
+    },
+    clickedApplyBanner() {
+      this.showApplyMessage = false
+    },
+  },
+}
 </script>
-
-</html>

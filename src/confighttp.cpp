@@ -901,14 +901,13 @@ namespace confighttp {
   }
 
   /**
-   * @brief Get an HTML page.
+   * @brief Serve the Web UI single-page application entry document.
    * @param response The HTTP response object.
    * @param request The HTTP request object.
-   * @param html_file The HTML file to serve (relative to WEB_DIR).
    * @param require_auth Whether to require authentication (default: true).
    * @param redirect_if_username If true, redirect to "/" when the username is set (for welcome page).
    */
-  void getPage(const resp_https_t &response, const req_https_t &request, const char *html_file, const bool require_auth, const bool redirect_if_username) {
+  void getPage(const resp_https_t &response, const req_https_t &request, const bool require_auth, const bool redirect_if_username) {
     if (!check_web_ui_origin(response, request)) {
       return;
     }
@@ -925,7 +924,7 @@ namespace confighttp {
 
     print_req(request);
 
-    const std::string content = file_handler::read_file((assets_path::web() + html_file).c_str());
+    const std::string content = file_handler::read_file((assets_path::web() + "index.html").c_str());
     SimpleWeb::CaseInsensitiveMultimap headers;
     headers.emplace("Content-Type", "text/html; charset=utf-8");
 
@@ -934,6 +933,20 @@ namespace confighttp {
     headers.emplace("Content-Security-Policy", "frame-ancestors 'none';");
 
     response->write(content, headers);
+  }
+
+  void getFallbackPage(const resp_https_t &response, const req_https_t &request) {
+    const std::string_view path = request->path;
+    const auto has_server_prefix = [path](const std::string_view prefix) {
+      return path == prefix || (path.starts_with(prefix) && path.length() > prefix.length() && path[prefix.length()] == '/');
+    };
+
+    if (has_server_prefix("/api") || has_server_prefix("/assets") || has_server_prefix("/images")) {
+      not_found(response, request);
+      return;
+    }
+
+    getPage(response, request);
   }
 
   /**
@@ -2677,10 +2690,10 @@ namespace confighttp {
 
     https_server_t server {config::nvhttp.cert, config::nvhttp.pkey};
 
-    // Helper to create page handler lambdas without repeating the signature
-    auto page_handler = [](const char *file, bool require_auth = true, bool redirect_if_username = false) {
-      return [file, require_auth, redirect_if_username](const resp_https_t &response, const req_https_t &request) {
-        getPage(response, request, file, require_auth, redirect_if_username);
+    // Helper to create SPA entry handlers without repeating the signature
+    auto page_handler = [](bool require_auth = true, bool redirect_if_username = false) {
+      return [require_auth, redirect_if_username](const resp_https_t &response, const req_https_t &request) {
+        getPage(response, request, require_auth, redirect_if_username);
       };
     };
 
@@ -2688,31 +2701,20 @@ namespace confighttp {
     const https_handler_t bad_request_handler = [](const resp_https_t &response, const req_https_t &request) {
       bad_request(response, request);
     };
-    const https_handler_t not_found_handler = [](const resp_https_t &response, const req_https_t &request) {
-      not_found(response, request);
-    };
-
     // error by default
     server.default_resource["DELETE"] = bad_request_handler;
     server.default_resource["PATCH"] = bad_request_handler;
     server.default_resource["POST"] = bad_request_handler;
     server.default_resource["PUT"] = bad_request_handler;
-    server.default_resource["GET"] = not_found_handler;
+    server.default_resource["GET"] = getFallbackPage;
 
-    // web pages
-    server.resource["^/$"]["GET"] = page_handler("index.html");
-    server.resource["^/apps/?$"]["GET"] = page_handler("apps.html");
+    // Public SPA routes with authentication behavior that differs from the default fallback
+    server.resource["^/logout/?$"]["GET"] = page_handler(false);
+    server.resource["^/welcome/?$"]["GET"] = page_handler(false, true);
+    // Legacy clients URL used by older UI builds and bookmarks.
     server.resource["^/clients/?$"]["GET"] = [](const resp_https_t &response, const req_https_t &request) {
       send_redirect(response, request, "/devices");
     };
-    server.resource["^/devices/?$"]["GET"] = page_handler("devices.html");
-    server.resource["^/config/?$"]["GET"] = page_handler("config.html");
-    server.resource["^/featured/?$"]["GET"] = page_handler("featured.html");
-    server.resource["^/logout/?$"]["GET"] = page_handler("logout.html", false);
-    server.resource["^/password/?$"]["GET"] = page_handler("password.html");
-    server.resource["^/pin/?$"]["GET"] = page_handler("pin.html");
-    server.resource["^/troubleshooting/?$"]["GET"] = page_handler("troubleshooting.html");
-    server.resource["^/welcome/?$"]["GET"] = page_handler("welcome.html", false, true);
 
     // rest api
     server.resource["^/api/browse$"]["GET"] = browseDirectory;
