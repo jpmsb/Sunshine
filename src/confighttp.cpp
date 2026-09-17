@@ -900,13 +900,6 @@ namespace confighttp {
     return true;
   }
 
-  /**
-   * @brief Serve the Web UI single-page application entry document.
-   * @param response The HTTP response object.
-   * @param request The HTTP request object.
-   * @param require_auth Whether to require authentication (default: true).
-   * @param redirect_if_username If true, redirect to "/" when the username is set (for welcome page).
-   */
   void getPage(const resp_https_t &response, const req_https_t &request, const bool require_auth, const bool redirect_if_username) {
     if (!check_web_ui_origin(response, request)) {
       return;
