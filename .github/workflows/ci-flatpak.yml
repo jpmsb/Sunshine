@@ -30,8 +30,9 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-22.04
+          # ubuntu-22.04-arm cannot install flatpak (unmet bubblewrap dependency on current images).
           - arch: aarch64
-            runner: ubuntu-22.04-arm
+            runner: ubuntu-24.04-arm
     steps:
       - name: More space
         if: matrix.arch == 'x86_64'
