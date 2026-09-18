@@ -109,8 +109,16 @@ jobs:
 
       - name: Setup Dependencies Linux Flatpak
         run: |
+          # Vendor apt sources on GitHub ARM images (e.g. packages.microsoft.com) can make
+          # flatpak/bubblewrap unresolvable ("Depends: bubblewrap ... not going to be installed").
+          sudo find /etc/apt/sources.list.d -type f -print0 2>/dev/null |
+            xargs -0 -r grep -lE 'packages\.microsoft\.com|azure-cli|packages\.microsoft' 2>/dev/null |
+            xargs -r sudo rm -f
+          # Keep Ubuntu/ports mirrors only for dependency resolution.
           sudo apt-get update -y
           sudo apt-get install -y \
+            -o APT::Get::Always-Include-Phased-Updates=true \
+            bubblewrap \
             cmake \
             flatpak
 
