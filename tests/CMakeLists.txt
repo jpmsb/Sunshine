@@ -242,6 +242,7 @@ set(INTEGRATION_TEST_FILES
     "scripts/linux_build.sh"
     "src/config.cpp"
     "src_assets/common/assets/web/Config.vue"
+    "src_assets/common/assets/web/locale.js"
     "docs/building.md"
     "docs/configuration.md"
     "docs/getting_started.md"

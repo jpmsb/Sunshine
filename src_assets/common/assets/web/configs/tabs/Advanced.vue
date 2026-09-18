@@ -2,11 +2,11 @@
 import { computed, ref } from 'vue'
 import PlatformLayout from '../../PlatformLayout.vue'
 
-const props = defineProps([
-  'platform',
-  'config',
-  'global_prep_cmd'
-])
+const props = defineProps({
+  platform: String,
+  config: Object,
+  global_prep_cmd: Array,
+})
 
 const config = ref(props.config)
 
@@ -186,7 +186,3 @@ function onPlaceholderColorPicker(event) {
 
   </div>
 </template>
-
-<style scoped>
-
-</style>

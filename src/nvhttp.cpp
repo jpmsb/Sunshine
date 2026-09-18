@@ -524,6 +524,8 @@ namespace nvhttp {
   /**
    * @brief Add authorized client data.
    *
+   * A completed pairing replaces all records with the same exact X.509 identity so legacy duplicate records cannot make the newly paired client fail authorization.
+   *
    * @param name Human-readable name to assign.
    * @param cert Certificate data or object used by the operation.
    * @param client_address Remote address observed during pairing.
@@ -531,27 +533,32 @@ namespace nvhttp {
    * @return Persistent UUID for the added client, or an empty string when the certificate is invalid.
    */
   std::string add_authorized_client(const std::string &name, std::string &&cert, const std::string &client_address = {}, uint16_t client_remote_port = 0) {
-    auto canonical_certificate = canonical_certificate_pem(cert);
-    if (canonical_certificate.empty()) {
+    auto certificate = crypto::x509(cert);
+    if (!certificate) {
       return {};
     }
 
     named_cert_t named_cert;
     named_cert.name = name;
-    named_cert.cert = std::move(canonical_certificate);
+    named_cert.cert = crypto::pem(certificate);
     named_cert.uuid = uuid_util::uuid_t::generate().string();
     named_cert.paired_at = current_utc_iso8601();
     named_cert.last_address = client_address;
     named_cert.last_port = client_remote_port;
+    const auto uuid = named_cert.uuid;
 
     std::lock_guard lock {client_auth_mutex()};
+    std::erase_if(client_root.named_devices, [&certificate](const named_cert_t &existing_client) {
+      auto existing_certificate = crypto::x509(existing_client.cert);
+      return existing_certificate && X509_cmp(existing_certificate.get(), certificate.get()) == 0;
+    });
     client_root.named_devices.emplace_back(std::move(named_cert));
     rebuild_client_cert_chain();
 
     if (!config::sunshine.flags[config::flag::FRESH_STATE]) {
       save_state();
     }
-    return client_root.named_devices.back().uuid;
+    return uuid;
   }
 
   /**
@@ -2017,6 +2024,21 @@ namespace nvhttp {
         set_client_enabled(uuid, false);
       }
       return uuid;
+    }
+
+    bool duplicate_client(const std::string_view uuid) {
+      std::lock_guard lock {client_auth_mutex()};
+      const auto client_it = std::ranges::find(client_root.named_devices, uuid, &named_cert_t::uuid);
+      if (client_it == client_root.named_devices.end()) {
+        return false;
+      }
+
+      auto duplicate = *client_it;
+      duplicate.uuid = uuid_util::uuid_t::generate().string();
+      client_root.named_devices.emplace_back(std::move(duplicate));
+      rebuild_client_cert_chain();
+      save_state();
+      return true;
     }
 
     bool authorize_client_certificate(const std::string_view cert) {
