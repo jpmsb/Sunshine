@@ -116,15 +116,16 @@ jobs:
             xargs -r sudo rm -f
           # Keep Ubuntu/ports mirrors only for dependency resolution.
           sudo apt-get update -y
-          # flatpak from -updates/-security needs the matching bubblewrap pocket; the release
-          # pocket candidate (e.g. 0.9.0-1build1) is older than flatpak's Depends and fails apt.
           . /etc/os-release
+          # On arm64 runners apt mixes flatpak from -updates/-security (Needs
+          # bubblewrap >= 0.9.0-1ubuntu0.1) with bubblewrap from release (0.9.0-1build1).
+          # Pin both to the release suite so their dependency versions match.
+          apt-cache policy bubblewrap flatpak || true
           sudo apt-get install -y \
-            -t "${VERSION_CODENAME}-updates" \
             -o APT::Get::Always-Include-Phased-Updates=true \
-            bubblewrap \
-            cmake \
-            flatpak
+            "bubblewrap/${VERSION_CODENAME}" \
+            "flatpak/${VERSION_CODENAME}" \
+            cmake
 
           sudo su "$(whoami)" -c "flatpak --user remote-add --if-not-exists flathub \
             https://flathub.org/repo/flathub.flatpakrepo
