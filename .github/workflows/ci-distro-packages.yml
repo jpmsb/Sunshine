@@ -65,6 +65,8 @@ jobs:
             arch: arm64
             runner: ubuntu-22.04-arm
             extra_args: "--ubuntu-test-repo"
+            # Native ARM runners have ~16 GiB; keep headroom under the cgroup limit.
+            container_options: --cpus 4 --memory 14g
           - name: ubuntu-24.04-arm64
             image: ubuntu:24.04
             distro: ubuntu
@@ -72,16 +74,19 @@ jobs:
             arch: arm64
             runner: ubuntu-22.04-arm
             extra_args: ""
+            container_options: --cpus 4 --memory 14g
           - name: debian-trixie-arm64
             image: debian:trixie
             distro: debian
             tag: trixie
             arch: arm64
             runner: ubuntu-22.04-arm
-            extra_args: "--cuda-patches"
+            # CUDA + GCC on Trixie needs more RAM per TU; limit parallelism to avoid cgroup thrash.
+            extra_args: "--cuda-patches --num-processors=2"
+            container_options: --cpus 4 --memory 14g
     container:
       image: ${{ matrix.image }}
-      options: --cpus 4 --memory 8g
+      options: ${{ matrix.container_options || '--cpus 4 --memory 8g' }}
     steps:
       - name: Install base tools
         shell: bash
