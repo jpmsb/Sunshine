@@ -1,6 +1,6 @@
 # Configuration
 
-@admonition{ Host authority | @htmlonly
+@admonition{ Host authority |:| @htmlonly
 By providing the host authority (URI + port), you can easily open each configuration option in the config UI.
 <br>
 <script src="configuration.js"></script>
@@ -3599,16 +3599,3 @@ min_log_level = 2
         <td>good for fast encoding and low-latency streaming</td>
     </tr>
 </table>
-
-<div class="section_buttons">
-
-| Previous          |                            Next |
-|:------------------|--------------------------------:|
-| [Legal](legal.md) | [App Examples](app_examples.md) |
-
-</div>
-
-<details style="display: none;">
-  <summary></summary>
-  [TOC]
-</details>
