@@ -398,12 +398,7 @@ int main(int argc, char *argv[]) {
 
 #endif
 
-  int task_pool_threads = 1;
-#ifdef SUNSHINE_BUILD_PORTAL
-  // Allocate an extra thread for fallback capture, otherwise a pending XDG user reply can block input.
-  task_pool_threads = 2;
-#endif
-  task_pool.start(task_pool_threads);
+  task_pool.start(1);
 
   // Create signal handler after logging has been initialized
   auto shutdown_event = mail::man->event<bool>(mail::shutdown);
@@ -479,9 +474,11 @@ int main(int argc, char *argv[]) {
   // probe left the icon missing until the portal dialog was closed.
   if (tray_is_enabled && config::sunshine.system_tray) {
     BOOST_LOG(info) << "Starting system tray"sv;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     system_tray::prepare_tray_virtualhid_license();
     system_tray::prepare_tray_virtualhid_driver();
+#endif
+#ifdef _WIN32
     // TODO: Windows has a weird bug where when running as a service and on the first Windows boot,
     // the tray icon would not appear even though Sunshine is running correctly otherwise.
     // Restarting the service would allow the icon to appear normally.
@@ -544,6 +541,8 @@ int main(int argc, char *argv[]) {
     BOOST_LOG(fatal) << "GameStream is still enabled in GeForce Experience! This *will* cause streaming problems with Sunshine!"sv;
     BOOST_LOG(fatal) << "Disable GameStream on the SHIELD tab in GeForce Experience or change the Port setting on the Advanced tab in the Sunshine Web UI."sv;
   }
+#endif
+
 #endif
 
   mainThreadLoop(shutdown_event);

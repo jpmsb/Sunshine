@@ -1329,12 +1329,21 @@ namespace platf {
       case no_token:
         BOOST_LOG(fatal) << "Portal capture is awaiting user permission. "sv
                          << "The current session will attempt to use a fallback capture method."sv;
-        task_pool.push([]() {
-          if (!portal_display_names(false).empty()) {
-            platf::restart();
-          } else {
-            BOOST_LOG(error) << "[portalgrab] Portal session token was not negotiated."sv;
-          }
+        std::call_once(portal::xdg_worker_flag, []() {
+          portal::xdg_worker = std::jthread([]() {
+            try {
+              platf::set_thread_name("xdg_worker");
+              if (!portal_display_names(false).empty()) {
+                platf::restart();
+              } else {
+                BOOST_LOG(error) << "[portalgrab] Portal session token was not negotiated."sv;
+              }
+            } catch (const std::exception &e) {
+              BOOST_LOG(error) << "[portalgrab] Exception caught in xdg_worker: "sv << e.what();
+            } catch (...) {
+              BOOST_LOG(error) << "[portalgrab] Unknown exception caught in xdg_worker"sv;
+            }
+          });
         });
         return false;
       default:
@@ -1589,6 +1598,17 @@ namespace platf {
      */
     ~platform_deinit_t() override {
 #ifdef SUNSHINE_BUILD_PORTAL
+      try {
+        if (portal::xdg_worker.joinable()) {
+          // Make sure the worker's response loop sees shutdown before we block on join().
+          if (mail::man) {
+            mail::man->event<bool>(mail::shutdown)->raise(true);
+          }
+          portal::xdg_worker.join();
+        }
+      } catch (const std::exception &err) {
+        BOOST_LOG(error) << "[portalgrab] Exception while joining xdg_worker: "sv << err.what();
+      }
       ::portal::screencast_bootstrap_stop_join();
       ::portal::release_screencast_live_session();
 #endif
