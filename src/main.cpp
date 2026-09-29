@@ -543,8 +543,6 @@ int main(int argc, char *argv[]) {
   }
 #endif
 
-#endif
-
   mainThreadLoop(shutdown_event);
 
   httpThread.join();
