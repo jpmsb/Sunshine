@@ -56,6 +56,7 @@
   #include "src/entry_handler.h"
   #include "stream.h"
   #include "system_tray.h"
+  #include "thread_safe.h"
   #ifdef _WIN32
     #include "platform/windows/utf_utils.h"
   #endif
@@ -392,10 +393,27 @@ namespace system_tray {
   static std::string tray_icon_virtualhid;
   #endif
 
+  #ifdef __APPLE__
+  /**
+   * @brief Leave macOS tray menu presentation to Qt's native status item.
+   *
+   * Qt opens an attached context menu on mouse press. Supplying a callback
+   * prevents the tray library from opening a second popup on activation.
+   *
+   * @param tray_icon Tray icon that received the click.
+   */
+  void tray_native_menu_click_cb([[maybe_unused]] struct tray *tray_icon) {
+  }
+  #endif
+
   static struct tray tray = {
     .icon = nullptr,
     .tooltip = PROJECT_NAME,
+  #ifdef __APPLE__
+    .cb = tray_native_menu_click_cb,
+  #else
     .cb = tray_left_click_cb,
+  #endif
     .menu = nullptr,
   #if defined(_WIN32) || defined(__APPLE__)
     .iconPathCount = 5,
@@ -1432,6 +1450,16 @@ namespace system_tray {
 
     process_pending_tray_updates();
     return tray_loop(0);
+  }
+
+  void run_tray_until_exit(const std::shared_ptr<safe::event_t<bool>> &shutdown_event) {
+    while (!shutdown_event->peek()) {
+      if (process_tray_events() != 0) {
+        break;
+      }
+      std::this_thread::sleep_for(16ms);
+    }
+    shutdown_event->raise(true);
   }
 
   int end_tray() {

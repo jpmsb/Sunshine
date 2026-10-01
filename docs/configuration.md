@@ -37,6 +37,18 @@ editing the `conf` file in a text editor. Use the examples as reference.
 The web UI groups these settings into the sidebar categories documented below. Encoder categories are shown only when
 supported on the current platform.
 
+## Permissions on every platform
+
+Open **Troubleshooting > Permissions** in the Web UI to see required and optional access for the current platform.
+The Home page flags verifiable required access that is missing. Sunshine checks for access granted while it is running
+and restarts once after all verifiable required access is available. On Unix, adding a user to a group takes effect only
+after a new login session; Sunshine cannot detect the new group membership in the existing process.
+
+On Linux and FreeBSD, virtual keyboard, mouse, and gamepad input need read and write access to `/dev/uinput` (Linux
+also checks `/dev/input/uinput`). The Web UI shows setup steps if that access is missing. On Windows, Sunshine checks
+whether its account can list and create files in the `config` directory beside the executable. Windows provides no
+consent prompt for directory ACLs, so the Web UI shows setup steps for correcting access.
+
 ## General
 
 ### locale
@@ -3475,6 +3487,43 @@ min_log_level = 2
         <td></td>
         <td>4</td>
         <td>VBR (Variable Bitrate)</td>
+    </tr>
+</table>
+
+### vk_quality
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Determines encoder tradeoff between quality and speed.
+            @note{This option only applies when using Vulkan [encoder](#encoder).}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}balanced@endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            vk_quality = quality
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Options</td>
+        <td>speed</td>
+        <td>Speed (prefer speed)</td>
+    </tr>
+    <tr>
+        <td></td>
+        <td>balanced</td>
+        <td>Balanced (default)</td>
+    </tr>
+    <tr>
+        <td></td>
+        <td>quality</td>
+        <td>Quality (prefer quality)</td>
     </tr>
 </table>
 

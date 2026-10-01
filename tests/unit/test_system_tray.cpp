@@ -29,6 +29,7 @@
   // local includes
   #include <src/config.h>
   #include <src/system_tray.h>
+  #include <src/thread_safe.h>
 
   #if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
     // lib includes
@@ -370,6 +371,19 @@ TEST_F(SystemTrayTest, UpdatesAreIgnoredBeforeInitialization) {
   EXPECT_EQ(system_tray::end_tray(), 0);
 }
 
+  #ifdef __APPLE__
+TEST_F(SystemTrayTest, LeftClickUsesNativeMacOSMenu) {
+  const auto &tray_data = system_tray::tray_data_for_testing();
+  ASSERT_NE(tray_data.cb, nullptr);
+  ASSERT_NE(tray_data.menu, nullptr);
+
+  tray_data.cb(nullptr);
+
+  EXPECT_STREQ(tray_data.menu[0].text, "Open Sunshine");
+  EXPECT_FALSE(system_tray::tray_initialized_for_testing());
+}
+  #endif
+
   #ifdef _WIN32
 TEST_F(SystemTrayTest, ResolvesDevelopmentTrayIconsFromExecutableDirectory) {
   EXPECT_EQ(system_tray::resource_path_for_testing(nullptr), nullptr);
@@ -707,16 +721,10 @@ TEST_F(SystemTrayTest, LifecycleMenuAndStateTransitions) {
     std::this_thread::sleep_for(100ms);
     std::ignore = system_tray::end_tray();
   });
-
-  bool tray_exited = false;
-  for (int i = 0; i < 200; ++i) {
-    if (system_tray::process_tray_events() != 0) {
-      tray_exited = true;
-      break;
-    }
-    std::this_thread::sleep_for(5ms);
-  }
-  EXPECT_TRUE(tray_exited);
+  auto shutdown_event = std::make_shared<safe::event_t<bool>>();
+  EXPECT_FALSE(shutdown_event->peek());
+  system_tray::run_tray_until_exit(shutdown_event);
+  EXPECT_TRUE(shutdown_event->peek());
   exit_thread.join();
   EXPECT_FALSE(system_tray::tray_initialized_for_testing());
 }
