@@ -69,14 +69,31 @@ jobs:
             registry.opensuse.org/opensuse/tumbleweed \
             bash -ec '
               set -euo pipefail
-              zypper --non-interactive refresh
-              zypper --non-interactive install -y --no-recommends \
-                git \
-                pigz \
-                rpm-build \
-                rpmlint \
-                tar \
-                which
+              # Tumbleweed aarch64 mirrors can race mid-snapshot (404 / digest
+              # mismatch). Refresh hard and retry package install a few times.
+              install_ok=0
+              for attempt in 1 2 3 4 5; do
+                echo "zypper install attempt ${attempt}/5"
+                zypper --non-interactive clean --all || true
+                zypper --non-interactive --gpg-auto-import-keys refresh --force
+                if zypper --non-interactive install -y --no-recommends \
+                  git \
+                  pigz \
+                  rpm-build \
+                  rpmlint \
+                  tar \
+                  which
+                then
+                  install_ok=1
+                  break
+                fi
+                echo "zypper install failed on attempt ${attempt}; retrying after delay"
+                sleep $((attempt * 15))
+              done
+              if [[ "${install_ok}" -ne 1 ]]; then
+                echo "zypper install failed after retries" >&2
+                exit 1
+              fi
               git config --global --add safe.directory /workspace
               chmod +x ./scripts/build_tumbleweed_rpm.sh ./scripts/prepare_rpm_source.sh
               ./scripts/build_tumbleweed_rpm.sh \
