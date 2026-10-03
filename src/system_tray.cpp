@@ -168,9 +168,11 @@ namespace system_tray {
     launch_ui();
   }
 
+#ifndef __APPLE__
   static void tray_left_click_cb([[maybe_unused]] struct tray *item) {
     tray_open_ui_cb(nullptr);
   }
+#endif
 
   static void tray_pin_notification_cb() {
     if (config::sunshine.flags.test(config::flag::PIN_STDIN)) {
