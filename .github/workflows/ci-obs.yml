@@ -69,12 +69,21 @@ jobs:
             registry.opensuse.org/opensuse/tumbleweed \
             bash -ec '
               set -euo pipefail
-              # Tumbleweed aarch64 mirrors can race mid-snapshot (404 / digest
-              # mismatch). Refresh hard and retry package install a few times.
+              # MirrorBrain redirects (download.opensuse.org) can return 404s or
+              # wrong RPM digests mid-snapshot, especially on aarch64 ports.
+              # Prefer the content CDN so metadata and packages stay consistent.
+              for repo in /etc/zypp/repos.d/*.repo; do
+                [[ -f "${repo}" ]] || continue
+                sed -i \
+                  -e "s|http://download.opensuse.org|https://downloadcontent.opensuse.org|g" \
+                  -e "s|https://download.opensuse.org|https://downloadcontent.opensuse.org|g" \
+                  "${repo}"
+              done
               install_ok=0
-              for attempt in 1 2 3 4 5; do
-                echo "zypper install attempt ${attempt}/5"
+              for attempt in 1 2 3 4 5 6 7 8; do
+                echo "zypper install attempt ${attempt}/8"
                 zypper --non-interactive clean --all || true
+                rm -rf /var/cache/zypp/* /var/tmp/zypp.* /var/tmp/zypp.tmp* || true
                 zypper --non-interactive --gpg-auto-import-keys refresh --force
                 if zypper --non-interactive install -y --no-recommends \
                   git \
@@ -88,7 +97,7 @@ jobs:
                   break
                 fi
                 echo "zypper install failed on attempt ${attempt}; retrying after delay"
-                sleep $((attempt * 15))
+                sleep $((attempt * 20))
               done
               if [[ "${install_ok}" -ne 1 ]]; then
                 echo "zypper install failed after retries" >&2
