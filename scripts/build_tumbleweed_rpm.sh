@@ -203,6 +203,56 @@ function find_missing_build_requires() {
   done
 }
 
+# Prefer openSUSE content CDN over MirrorBrain redirects.
+# download.opensuse.org can hand out stale mirrors (HTTP 404 / wrong RPM
+# digests) during Tumbleweed snapshot publication, especially on aarch64.
+function prefer_opensuse_content_cdn() {
+  local repo
+  for repo in /etc/zypp/repos.d/*.repo; do
+    [[ -f "${repo}" ]] || continue
+    if [[ -n "${sudo_cmd}" ]]; then
+      ${sudo_cmd} sed -i \
+        -e 's|http://download.opensuse.org|https://downloadcontent.opensuse.org|g' \
+        -e 's|https://download.opensuse.org|https://downloadcontent.opensuse.org|g' \
+        "${repo}"
+    else
+      sed -i \
+        -e 's|http://download.opensuse.org|https://downloadcontent.opensuse.org|g' \
+        -e 's|https://download.opensuse.org|https://downloadcontent.opensuse.org|g' \
+        "${repo}"
+    fi
+  done
+}
+
+# Run zypper install with clean/refresh retries for mirror races.
+function zypper_install_retry() {
+  local attempt
+  local max_attempts=8
+  prefer_opensuse_content_cdn
+  for attempt in $(seq 1 "${max_attempts}"); do
+    echo "zypper install attempt ${attempt}/${max_attempts}: $*"
+    if [[ -n "${sudo_cmd}" ]]; then
+      ${sudo_cmd} zypper --non-interactive clean --all || true
+      ${sudo_cmd} rm -rf /var/cache/zypp/* /var/tmp/zypp.* /var/tmp/zypp.tmp* || true
+      ${sudo_cmd} zypper --non-interactive --gpg-auto-import-keys refresh --force
+      if ${sudo_cmd} zypper --non-interactive install -y --no-recommends "$@"; then
+        return 0
+      fi
+    else
+      zypper --non-interactive clean --all || true
+      rm -rf /var/cache/zypp/* /var/tmp/zypp.* /var/tmp/zypp.tmp* || true
+      zypper --non-interactive --gpg-auto-import-keys refresh --force
+      if zypper --non-interactive install -y --no-recommends "$@"; then
+        return 0
+      fi
+    fi
+    echo "zypper install failed on attempt ${attempt}; retrying after delay"
+    sleep $((attempt * 20))
+  done
+  echo "ERROR: zypper install failed after ${max_attempts} attempts: $*" >&2
+  return 1
+}
+
 function install_build_requires() {
   local spec_file="${rpm_topdir}/SPECS/${package_name}.spec"
   local -a build_requires=()
@@ -224,15 +274,7 @@ function install_build_requires() {
 
   echo "Installing ${#missing_requires[@]} missing build dependencies with zypper..."
   echo "  Missing: ${missing_requires[*]}"
-  if [[ -n "${sudo_cmd}" ]]; then
-    ${sudo_cmd} zypper --non-interactive refresh
-    ${sudo_cmd} zypper --non-interactive install -y --no-recommends \
-      rpm-build rpmlint "${build_requires[@]}"
-  else
-    zypper --non-interactive refresh
-    zypper --non-interactive install -y --no-recommends \
-      rpm-build rpmlint "${build_requires[@]}"
-  fi
+  zypper_install_retry rpm-build rpmlint "${build_requires[@]}"
 }
 
 function copy_artifacts() {
