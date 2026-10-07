@@ -16,22 +16,28 @@ if(DEFINED ENV{TAG})
     set(GITHUB_TAG $ENV{TAG})
 endif()
 
-# Fork version stamp: YYYY.MMDD.HHMMSS-jpmsb (configure timestamp).
-# Used for local and CI builds so this fork always exposes a consistent CalVer.
-string(TIMESTAMP PROJECT_VERSION_YEAR "%Y")
-string(TIMESTAMP PROJECT_VERSION_MONTH_DAY "%m%d")
-string(TIMESTAMP PROJECT_VERSION_HMS "%H%M%S")
-set(PROJECT_VERSION_CORE
-        "${PROJECT_VERSION_YEAR}.${PROJECT_VERSION_MONTH_DAY}.${PROJECT_VERSION_HMS}")
+# Fork CalVer: YYYY.MMDD.HHMMSS with display suffix "-jpmsb".
+# In CI, prefer BUILD_VERSION (release/package version) so `sunshine --version`,
+# CPack, and GitHub release tags share the same numeric core. Local builds fall
+# back to the CMake configure timestamp.
+if((DEFINED ENV{BRANCH}) AND (DEFINED ENV{BUILD_VERSION}) AND (NOT "$ENV{BUILD_VERSION}" STREQUAL ""))  # cmake-lint: disable=W0106
+    set(PROJECT_VERSION_CORE "$ENV{BUILD_VERSION}")
+    string(REGEX REPLACE "^v" "" PROJECT_VERSION_CORE "${PROJECT_VERSION_CORE}")
+    # Ignore a trailing fork suffix if the release input already includes it.
+    string(REGEX REPLACE "-jpmsb$" "" PROJECT_VERSION_CORE "${PROJECT_VERSION_CORE}")
+    message("Got from CI '$ENV{BRANCH}' branch and version '${PROJECT_VERSION_CORE}'")
+else()
+    string(TIMESTAMP PROJECT_VERSION_YEAR "%Y")
+    string(TIMESTAMP PROJECT_VERSION_MONTH_DAY "%m%d")
+    string(TIMESTAMP PROJECT_VERSION_HMS "%H%M%S")
+    set(PROJECT_VERSION_CORE
+            "${PROJECT_VERSION_YEAR}.${PROJECT_VERSION_MONTH_DAY}.${PROJECT_VERSION_HMS}")
+endif()
+
 set(PROJECT_VERSION "${PROJECT_VERSION_CORE}-jpmsb")
 # CPack/numeric fields omit the fork suffix (hyphens break some package version schemas).
 set(CMAKE_PROJECT_VERSION ${PROJECT_VERSION_CORE})
-
-if((DEFINED ENV{BRANCH}) AND (DEFINED ENV{BUILD_VERSION}) AND (NOT "$ENV{BUILD_VERSION}" STREQUAL ""))  # cmake-lint: disable=W0106
-    message("CI branch '$ENV{BRANCH}' provided BUILD_VERSION='$ENV{BUILD_VERSION}'; using fork stamp ${PROJECT_VERSION}")
-else()
-    message("Sunshine build version: ${PROJECT_VERSION}")
-endif()
+message("Sunshine build version: ${PROJECT_VERSION}")
 
 # set date variables
 set(PROJECT_YEAR "1990")
