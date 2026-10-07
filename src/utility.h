@@ -444,14 +444,15 @@ namespace util {
      * @param rev Whether bytes should be emitted in reverse order.
      */
     Hex(const elem_type &elem, bool rev) {
+      const auto *bytes = reinterpret_cast<const uint8_t *>(&elem);
       if (!rev) {
-        const uint8_t *data = reinterpret_cast<const uint8_t *>(&elem) + sizeof(elem_type) - 1;
+        const uint8_t *data = &bytes[sizeof(elem_type) - 1];
         for (auto it = begin(); it < cend();) {
           *it++ = _bits[*data / 16];
           *it++ = _bits[*data-- % 16];
         }
       } else {
-        const uint8_t *data = reinterpret_cast<const uint8_t *>(&elem);
+        const uint8_t *data = bytes;
         for (auto it = begin(); it < cend();) {
           *it++ = _bits[*data / 16];
           *it++ = _bits[*data++ % 16];
@@ -1787,9 +1788,9 @@ namespace util {
        */
       static inline T big(T x) {
         if constexpr (endianness<T>::little) {
-          uint8_t *data = reinterpret_cast<uint8_t *>(&x);
+          auto *data = reinterpret_cast<uint8_t *>(&x);
 
-          std::reverse(data, data + sizeof(x));
+          std::reverse(&data[0], &data[sizeof(x)]);
         }
 
         return x;
@@ -1803,9 +1804,9 @@ namespace util {
        */
       static inline T little(T x) {
         if constexpr (endianness<T>::big) {
-          uint8_t *data = reinterpret_cast<uint8_t *>(&x);
+          auto *data = reinterpret_cast<uint8_t *>(&x);
 
-          std::reverse(data, data + sizeof(x));
+          std::reverse(&data[0], &data[sizeof(x)]);
         }
 
         return x;
@@ -1831,7 +1832,7 @@ namespace util {
         if constexpr (endianness<T>::big) {
           auto *data = reinterpret_cast<uint8_t *>(&*x);
 
-          std::reverse(data, data + sizeof(*x));
+          std::reverse(&data[0], &data[sizeof(*x)]);
         }
 
         return x;
@@ -1851,7 +1852,7 @@ namespace util {
         if constexpr (endianness<T>::little) {
           auto *data = reinterpret_cast<uint8_t *>(&*x);
 
-          std::reverse(data, data + sizeof(*x));
+          std::reverse(&data[0], &data[sizeof(*x)]);
         }
 
         return x;
