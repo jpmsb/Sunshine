@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <condition_variable>
 #include <cstddef>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -473,7 +474,7 @@ namespace util {
      * @return Iterator one past the last element.
      */
     char *end() {
-      return _hex + sizeof(elem_type) * 2;
+      return std::end(_hex);
     }
 
     /**
@@ -491,7 +492,7 @@ namespace util {
      * @return Iterator one past the last element.
      */
     const char *end() const {
-      return _hex + sizeof(elem_type) * 2;
+      return std::end(_hex);
     }
 
     /**
@@ -509,7 +510,7 @@ namespace util {
      * @return Pointer one past the last formatted hexadecimal character.
      */
     const char *cend() const {
-      return _hex + sizeof(elem_type) * 2;
+      return std::end(_hex);
     }
 
     /**
@@ -527,7 +528,7 @@ namespace util {
      * @return Value converted to string view.
      */
     std::string_view to_string_view() const {
-      return {begin(), sizeof(elem_type) * 2};
+      return {begin(), std::size(_hex)};
     }
   };
 
