@@ -142,11 +142,34 @@ jobs:
             pacman -U --noconfirm "${tarballs}"
           fi
 
-          # Only add --ignore if we have packages to ignore
-          if [ -n "${ignore_list}" ]; then
-            pacman -Syu --noconfirm --ignore="${ignore_list}" "${dependencies[@]}"
+          # MSYS2 mirrors frequently return HTTP 429 when pacman parallel-downloads
+          # a large dependency set (~1GiB). Prefer fewer parallel transfers and retry.
+          if grep -qE '^ParallelDownloads' /etc/pacman.conf; then
+            sed -i 's/^ParallelDownloads.*/ParallelDownloads = 2/' /etc/pacman.conf
           else
-            pacman -Syu --noconfirm "${dependencies[@]}"
+            printf '\nParallelDownloads = 2\n' >> /etc/pacman.conf
+          fi
+
+          install_ok=0
+          for attempt in 1 2 3 4 5; do
+            echo "pacman install attempt ${attempt}/5"
+            if [ -n "${ignore_list}" ]; then
+              if pacman -Syu --noconfirm --needed --ignore="${ignore_list}" "${dependencies[@]}"; then
+                install_ok=1
+                break
+              fi
+            else
+              if pacman -Syu --noconfirm --needed "${dependencies[@]}"; then
+                install_ok=1
+                break
+              fi
+            fi
+            echo "pacman install failed on attempt ${attempt}; retrying after delay"
+            sleep $((attempt * 30))
+          done
+          if [[ "${install_ok}" -ne 1 ]]; then
+            echo "pacman install failed after retries" >&2
+            exit 1
           fi
 
       - name: Setup dotnet  # needed for wix
