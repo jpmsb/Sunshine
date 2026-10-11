@@ -23,12 +23,13 @@ jobs:
   release-setup:
     name: Release Setup
     outputs:
-      publish_release: ${{ steps.release-setup.outputs.publish_release }}
-      release_body: ${{ steps.release-setup.outputs.release_body }}
-      release_commit: ${{ steps.release-setup.outputs.release_commit }}
-      release_generate_release_notes: ${{ steps.release-setup.outputs.release_generate_release_notes }}
-      release_tag: ${{ steps.release-setup.outputs.release_tag }}
-      release_version: ${{ steps.release-setup.outputs.release_version }}
+      # release-setup crashes on workflow_dispatch (no event.commits); use the manual fallback then.
+      publish_release: ${{ steps.release-setup.outputs.publish_release || steps.release-setup-manual.outputs.publish_release }}
+      release_body: ${{ steps.release-setup.outputs.release_body || steps.release-setup-manual.outputs.release_body }}
+      release_commit: ${{ steps.release-setup.outputs.release_commit || steps.release-setup-manual.outputs.release_commit }}
+      release_generate_release_notes: ${{ steps.release-setup.outputs.release_generate_release_notes || steps.release-setup-manual.outputs.release_generate_release_notes }}
+      release_tag: ${{ steps.release-setup.outputs.release_tag || steps.release-setup-manual.outputs.release_tag }}
+      release_version: ${{ steps.release-setup.outputs.release_version || steps.release-setup-manual.outputs.release_version }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -37,10 +38,31 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Release Setup
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
         id: release-setup
         uses: LizardByte/actions/actions/release_setup@28374bf43cc8b6ee88b9b8a3419b2ac7a6573906  # v2026.928.123224
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      # release_setup assumes a push payload with commits[]; workflow_dispatch has neither.
+      # Manual runs build against HEAD but never publish a GitHub Release.
+      - name: Release Setup (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        id: release-setup-manual
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_version="$(date -u +'%Y.%-m%d.%-H%M%S')"
+          release_tag="v${release_version}"
+          {
+            echo "publish_release=false"
+            echo "release_body="
+            echo "release_commit=${GITHUB_SHA}"
+            echo "release_generate_release_notes=false"
+            echo "release_tag=${release_tag}"
+            echo "release_version=${release_version}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "Manual CI run: version=${release_version} commit=${GITHUB_SHA} (publish_release=false)"
 
   build-docker:
     name: Docker
