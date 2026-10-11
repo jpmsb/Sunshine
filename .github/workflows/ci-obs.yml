@@ -79,13 +79,18 @@ jobs:
                   -e "s|https://download.opensuse.org|https://downloadcontent.opensuse.org|g" \
                   "${repo}"
               done
+              # OBS-only packages Require this-is-only-for-build-envs; lock them so
+              # mid-snapshot glib/ffmpeg skew cannot cancel non-interactive zypper.
+              for pkg in glib2-stage1-devel 'glib2-stage1*' '*-stage1-devel' '*-mini-libs'; do
+                zypper --non-interactive addlock "${pkg}" >/dev/null 2>&1 || true
+              done
               install_ok=0
               for attempt in 1 2 3 4 5 6 7 8; do
                 echo "zypper install attempt ${attempt}/8"
                 zypper --non-interactive clean --all || true
                 rm -rf /var/cache/zypp/* /var/tmp/zypp.* /var/tmp/zypp.tmp* || true
                 zypper --non-interactive --gpg-auto-import-keys refresh --force
-                if zypper --non-interactive install -y --no-recommends \
+                if zypper --non-interactive install -y --allow-downgrade --force-resolution --no-recommends \
                   git \
                   pigz \
                   rpm-build \
