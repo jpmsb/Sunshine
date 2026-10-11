@@ -6,6 +6,8 @@
 
 // standard includes
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <condition_variable>
 #include <cstddef>
 #include <iterator>
@@ -415,7 +417,7 @@ namespace util {
     typedef T elem_type;
 
   private:
-    const char _bits[16] {
+    const std::array<char, 16> _bits {
       '0',
       '1',
       '2',
@@ -434,7 +436,7 @@ namespace util {
       'F'
     };
 
-    char _hex[sizeof(elem_type) * 2];
+    std::array<char, sizeof(elem_type) * 2> _hex;  ///< Formatted hexadecimal characters.
 
   public:
     /**
@@ -466,7 +468,7 @@ namespace util {
      * @return Iterator to the first element.
      */
     char *begin() {
-      return _hex;
+      return _hex.data();
     }
 
     /**
@@ -475,7 +477,7 @@ namespace util {
      * @return Iterator one past the last element.
      */
     char *end() {
-      return std::end(_hex);
+      return _hex.data() + _hex.size();
     }
 
     /**
@@ -484,7 +486,7 @@ namespace util {
      * @return Iterator to the first element.
      */
     const char *begin() const {
-      return _hex;
+      return _hex.data();
     }
 
     /**
@@ -493,7 +495,7 @@ namespace util {
      * @return Iterator one past the last element.
      */
     const char *end() const {
-      return std::end(_hex);
+      return _hex.data() + _hex.size();
     }
 
     /**
@@ -502,7 +504,7 @@ namespace util {
      * @return Pointer to the first formatted hexadecimal character.
      */
     const char *cbegin() const {
-      return _hex;
+      return _hex.data();
     }
 
     /**
@@ -511,7 +513,7 @@ namespace util {
      * @return Pointer one past the last formatted hexadecimal character.
      */
     const char *cend() const {
-      return std::end(_hex);
+      return _hex.data() + _hex.size();
     }
 
     /**
@@ -575,7 +577,7 @@ namespace util {
       return hex;
     }
 
-    const char _bits[16] {
+    const std::array<char, 16> _bits {
       '0',
       '1',
       '2',
@@ -631,7 +633,7 @@ namespace util {
    */
   template<class T>
   T from_hex(const std::string_view &hex, bool rev = false) {
-    std::uint8_t buf[sizeof(T)];
+    std::array<std::uint8_t, sizeof(T)> buf;
 
     static char constexpr shift_bit = 'a' - 'A';
 
@@ -662,9 +664,9 @@ namespace util {
       return (std::uint8_t) (ch | (char) 32) - 'a' + (char) 10;
     };
 
-    std::fill_n(buf + buf_size, padding, 0);
+    std::fill_n(buf.begin() + buf_size, padding, 0);
 
-    std::for_each_n(buf, buf_size, [&](auto &el) {
+    std::for_each_n(buf.begin(), buf_size, [&](auto &el) {
       while (!is_convertable(*data)) {
         --data;
       }
@@ -682,7 +684,7 @@ namespace util {
       std::reverse(std::begin(buf), std::end(buf));
     }
 
-    return *reinterpret_cast<T *>(buf);
+    return std::bit_cast<T>(buf);
   }
 
   /**
@@ -1471,7 +1473,7 @@ namespace util {
         _els {0} {};
 
     /**
-     * @brief Construct an owning contiguous buffer.
+     * @brief Move an owning contiguous buffer and leave the source logically empty.
      *
      * @param o Source object used for comparison or assignment.
      */
@@ -1488,12 +1490,12 @@ namespace util {
      */
     buffer_t(const buffer_t &o):
         _els {o._els},
-        _buf {std::make_unique<T[]>(_els)} {
+        _buf(_els) {
       std::copy(o.begin(), o.end(), begin());
     }
 
     /**
-     * @brief Assign state from another instance while preserving ownership semantics.
+     * @brief Exchange allocations and logical counts with the source buffer.
      *
      * @param o Source object used for comparison or assignment.
      * @return Reference returned by the operator overload.
@@ -1512,7 +1514,7 @@ namespace util {
      */
     explicit buffer_t(size_t elements):
         _els {elements},
-        _buf {std::make_unique<T[]>(elements)} {
+        _buf(elements) {
     }
 
     /**
@@ -1523,8 +1525,8 @@ namespace util {
      */
     explicit buffer_t(size_t elements, const T &t):
         _els {elements},
-        _buf {std::make_unique<T[]>(elements)} {
-      std::fill_n(_buf.get(), elements, t);
+        _buf(elements) {
+      std::fill_n(_buf.data(), elements, t);
     }
 
     /**
@@ -1571,7 +1573,7 @@ namespace util {
      * @return Iterator to the first element.
      */
     T *begin() {
-      return _buf.get();
+      return _buf.data();
     }
 
     /**
@@ -1580,7 +1582,7 @@ namespace util {
      * @return Iterator to the first element.
      */
     const T *begin() const {
-      return _buf.get();
+      return _buf.data();
     }
 
     /**
@@ -1589,7 +1591,7 @@ namespace util {
      * @return Iterator one past the last element.
      */
     T *end() {
-      return _buf.get() + _els;
+      return _buf.data() + _els;
     }
 
     /**
@@ -1598,12 +1600,12 @@ namespace util {
      * @return Iterator one past the last element.
      */
     const T *end() const {
-      return _buf.get() + _els;
+      return _buf.data() + _els;
     }
 
   private:
-    size_t _els;
-    std::unique_ptr<T[]> _buf;
+    size_t _els;  ///< Logical element count, which may be smaller than the allocation.
+    std::vector<T> _buf;  ///< Owned allocation retained when the logical count changes.
   };
 
   /**
