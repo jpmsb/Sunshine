@@ -203,6 +203,15 @@ function find_missing_build_requires() {
   done
 }
 
+# Run zypper, optionally via sudo.
+function run_zypper() {
+  if [[ -n "${sudo_cmd}" ]]; then
+    ${sudo_cmd} zypper "$@"
+  else
+    zypper "$@"
+  fi
+}
+
 # Prefer openSUSE content CDN over MirrorBrain redirects.
 # download.opensuse.org can hand out stale mirrors (HTTP 404 / wrong RPM
 # digests) during Tumbleweed snapshot publication, especially on aarch64.
@@ -224,27 +233,52 @@ function prefer_opensuse_content_cdn() {
   done
 }
 
-# Run zypper install with clean/refresh retries for mirror races.
+# Block OBS-only "stage1" / "mini" packages that Require this-is-only-for-build-envs.
+# When the Tumbleweed image and OSS repos are mid-snapshot (e.g. libglib 2.88.4
+# already installed but glib2-devel still resolves to 2.88.3), the solver tries
+# glib2-stage1-devel and cancels non-interactive installs.
+function zypper_lock_build_env_only_packages() {
+  local pkg
+  for pkg in glib2-stage1-devel 'glib2-stage1*' '*-stage1-devel' '*-mini-libs'; do
+    run_zypper --non-interactive addlock "${pkg}" >/dev/null 2>&1 || true
+  done
+}
+
+# Align the container with the current Tumbleweed snapshot before BuildRequires.
+function zypper_dup_sync() {
+  echo "Syncing Tumbleweed packages to the current snapshot (zypper dup)..."
+  prefer_opensuse_content_cdn
+  zypper_lock_build_env_only_packages
+  run_zypper --non-interactive clean --all || true
+  if [[ -n "${sudo_cmd}" ]]; then
+    ${sudo_cmd} rm -rf /var/cache/zypp/* /var/tmp/zypp.* /var/tmp/zypp.tmp* || true
+  else
+    rm -rf /var/cache/zypp/* /var/tmp/zypp.* /var/tmp/zypp.tmp* || true
+  fi
+  run_zypper --non-interactive --gpg-auto-import-keys refresh --force
+  # Allow downgrades when the image is ahead of a partially published snapshot.
+  run_zypper --non-interactive dup -y --allow-downgrade --force-resolution --no-recommends || true
+}
+
+# Run zypper install with clean/refresh retries for mirror races and solver skew.
 function zypper_install_retry() {
   local attempt
   local max_attempts=8
   prefer_opensuse_content_cdn
+  zypper_lock_build_env_only_packages
   for attempt in $(seq 1 "${max_attempts}"); do
     echo "zypper install attempt ${attempt}/${max_attempts}: $*"
+    run_zypper --non-interactive clean --all || true
     if [[ -n "${sudo_cmd}" ]]; then
-      ${sudo_cmd} zypper --non-interactive clean --all || true
       ${sudo_cmd} rm -rf /var/cache/zypp/* /var/tmp/zypp.* /var/tmp/zypp.tmp* || true
-      ${sudo_cmd} zypper --non-interactive --gpg-auto-import-keys refresh --force
-      if ${sudo_cmd} zypper --non-interactive install -y --no-recommends "$@"; then
-        return 0
-      fi
     else
-      zypper --non-interactive clean --all || true
       rm -rf /var/cache/zypp/* /var/tmp/zypp.* /var/tmp/zypp.tmp* || true
-      zypper --non-interactive --gpg-auto-import-keys refresh --force
-      if zypper --non-interactive install -y --no-recommends "$@"; then
-        return 0
-      fi
+    fi
+    run_zypper --non-interactive --gpg-auto-import-keys refresh --force
+    # --allow-downgrade/--force-resolution: accept libglib downgrade instead of
+    # cancelling when image runtime libs are briefly ahead of devel packages.
+    if run_zypper --non-interactive install -y --allow-downgrade --force-resolution --no-recommends "$@"; then
+      return 0
     fi
     echo "zypper install failed on attempt ${attempt}; retrying after delay"
     sleep $((attempt * 20))
@@ -274,6 +308,7 @@ function install_build_requires() {
 
   echo "Installing ${#missing_requires[@]} missing build dependencies with zypper..."
   echo "  Missing: ${missing_requires[*]}"
+  zypper_dup_sync
   zypper_install_retry rpm-build rpmlint "${build_requires[@]}"
 }
 
