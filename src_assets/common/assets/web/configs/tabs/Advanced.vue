@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import PlatformLayout from '../../PlatformLayout.vue'
+import Checkbox from '../../Checkbox.vue'
 
 const props = defineProps({
   platform: String,
@@ -154,6 +155,15 @@ function onPlaceholderColorPicker(event) {
       >
       <div class="form-text">{{ $t('config.screencast_placeholder_text_desc') }}</div>
     </div>
+
+    <!-- FP16 SDR Gamma Encoded -->
+    <Checkbox v-if="platform === 'windows'"
+              class="mb-3"
+              id="fp16_sdr_gamma_encoded"
+              locale-prefix="config"
+              v-model="config.fp16_sdr_gamma_encoded"
+              default="false"
+    ></Checkbox>
 
     <!-- Encoder -->
     <div class="mb-3">

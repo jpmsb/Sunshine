@@ -782,6 +782,7 @@ namespace config {
     false,  // screencast_persist
     "#000000",  // screencast_placeholder_color
     {},  // screencast_placeholder_text
+    false,  // fp16_sdr_gamma_encoded
     {},  // encoder
     {},  // adapter_name
     {},  // output_name
@@ -811,6 +812,7 @@ namespace config {
     {},  // virtual_sink
     true,  // stream audio
     true,  // install_steam_drivers
+    false,  // external_audio
   };
 
   /**
@@ -1714,6 +1716,7 @@ namespace config {
     bool_f(vars, "screencast_persist", video.screencast_persist);
     string_f(vars, "screencast_placeholder_color", video.screencast_placeholder_color);
     string_f(vars, "screencast_placeholder_text", video.screencast_placeholder_text);
+    bool_f(vars, "fp16_sdr_gamma_encoded", video.fp16_sdr_gamma_encoded);
     string_f(vars, "encoder", video.encoder);
     string_f(vars, "adapter_name", video.adapter_name);
     string_f(vars, "output_name", video.output_name);
@@ -1759,6 +1762,7 @@ namespace config {
     string_f(vars, "virtual_sink", audio.virtual_sink);
     bool_f(vars, "stream_audio", audio.stream);
     bool_f(vars, "install_steam_audio_drivers", audio.install_steam_drivers);
+    bool_f(vars, "external_audio", audio.external_audio);
 
     string_restricted_f(vars, "origin_web_ui_allowed", nvhttp.origin_web_ui_allowed, {"pc"sv, "lan"sv, "wan"sv});
 

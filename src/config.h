@@ -139,6 +139,7 @@ namespace config {
     bool screencast_persist;  ///< Persist screencast portal source selection via restore token.
     std::string screencast_placeholder_color;  ///< Hex `#RRGGBB`/`#RRGGBBAA` background for screencast wait screen.
     std::string screencast_placeholder_text;  ///< Text on screencast wait screen; empty uses the hostname.
+    bool fp16_sdr_gamma_encoded;  ///< Treat FP16 captures of SDR displays as already sRGB gamma-encoded (Windows).
     std::string encoder;  ///< Encoder backend name selected by configuration.
     std::string adapter_name;  ///< Display adapter name selected in configuration.
     std::string output_name;  ///< Display output name selected in configuration.
@@ -234,6 +235,7 @@ namespace config {
     std::string virtual_sink;  ///< Virtual audio sink for audio routing
     bool stream;  ///< Enable audio streaming to clients
     bool install_steam_drivers;  ///< Install Steam audio drivers for enhanced compatibility
+    bool external_audio;  ///< Windows capture-only mode; an external router owns endpoint defaults and formats.
   };
 
   /**

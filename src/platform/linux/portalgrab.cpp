@@ -3,7 +3,10 @@
  * @brief Definitions for XDG portal grab.
  */
 // standard includes
+#include <algorithm>
 #include <atomic>
+#include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -11,6 +14,10 @@
 #include <string>
 #include <string_view>
 #include <thread>
+
+// lib includes
+#include <boost/algorithm/string.hpp>
+#include <lizardbyte/common/env.h>
 
 // local includes
 #include "config.h"
@@ -126,7 +133,7 @@ namespace portal {
      * @brief Load persisted state from its backing store.
      */
     void load() {
-      std::ifstream file(get_file_path());
+      std::ifstream file(instance_file_path());
       if (file.is_open()) {
         std::getline(file, token_);
         if (!token_.empty()) {
@@ -141,7 +148,7 @@ namespace portal {
     void clear() {
       std::error_code ec;
       token_.clear();
-      std::filesystem::remove(get_file_path(), ec);
+      std::filesystem::remove(instance_file_path(), ec);
     }
 
     /**
@@ -151,7 +158,7 @@ namespace portal {
       if (token_.empty()) {
         return;
       }
-      std::ofstream file(get_file_path());
+      std::ofstream file(instance_file_path());
       if (file.is_open()) {
         file << token_;
         BOOST_LOG(info) << "[portalgrab] Saved portal restore token to disk ("sv << filename_ << ")"sv;
@@ -160,12 +167,68 @@ namespace portal {
       }
     }
 
+    /**
+     * @brief Get file path of the XDG Portal restore token.
+     *
+     * The token filename is suffixed with the XDG session desktop when set in the environment.
+     *
+     * @param directory Directory containing saved tokens; defaults to the application data directory.
+     * @param desktop Session desktop; defaults to the XDG_SESSION_DESKTOP environment variable.
+     * @param filename Token basename such as `portal_token` or `screencast_token`.
+     * @return File path.
+     */
+    static std::filesystem::path get_file_path(
+      const std::filesystem::path &directory = platf::appdata(),
+      const std::string &desktop = lizardbyte::common::get_env("XDG_SESSION_DESKTOP"),
+      const std::string &filename = "portal_token"
+    ) {
+      const std::filesystem::path legacy_path = directory / filename;
+
+      std::string suffix(desktop);
+      boost::algorithm::to_lower(suffix);
+
+      // Restrict the suffix to prevent path traversal and other invalid filename characters.
+      if (const bool is_safe = !suffix.empty() && std::all_of(suffix.begin(), suffix.end(), [](unsigned char c) {
+            return std::isalnum(c) || c == '_' || c == '-';
+          });
+          !is_safe) {
+        BOOST_LOG(warning) << "[portalgrab] XDG session desktop type cannot be determined. Using .unknown suffix for Portal restore token."sv;
+        suffix = "unknown";
+      }
+
+      const std::filesystem::path suffixed_path = directory / (filename + "." + suffix);
+
+      // One-time migration of the unsuffixed legacy token basename.
+      std::error_code ec;
+      if (!std::filesystem::exists(suffixed_path, ec) && !ec) {
+        const bool legacy_exists = std::filesystem::exists(legacy_path, ec);
+
+        if (!ec && legacy_exists) {
+          // Attempt one-time adoption of a pre-upgrade token. Best-effort guess that it belongs
+          // to this session type; if wrong, we're no worse off than not migrating.
+          std::filesystem::rename(legacy_path, suffixed_path, ec);
+          if (ec) {
+            BOOST_LOG(error) << "[portalgrab] Portal restore token migration failed: "sv << ec.message();
+          } else {
+            BOOST_LOG(info) << "[portalgrab] Portal restore token migrated to "sv << filename << "."sv << suffix;
+          }
+        }
+      }
+
+      return suffixed_path;
+    }
+
   private:
     std::string filename_;  ///< Token basename under the Sunshine appdata directory.
     std::string token_;  ///< In-memory restore token value.
 
-    std::string get_file_path() const {
-      return platf::appdata().string() + "/" + filename_;
+    /**
+     * @brief Resolve the on-disk path for this instance's token basename.
+     *
+     * @return Desktop-suffixed path under the Sunshine appdata directory.
+     */
+    std::filesystem::path instance_file_path() const {
+      return get_file_path(platf::appdata(), lizardbyte::common::get_env("XDG_SESSION_DESKTOP"), filename_);
     }
   };
 
@@ -175,7 +238,12 @@ namespace portal {
    * @return Path under the Sunshine appdata directory.
    */
   std::string portal_token_file_path() {
-    return platf::appdata().string() + "/" + std::string {PORTAL_TOKEN_FILENAME};
+    return restore_token_t::get_file_path(
+             platf::appdata(),
+             lizardbyte::common::get_env("XDG_SESSION_DESKTOP"),
+             std::string {PORTAL_TOKEN_FILENAME}
+    )
+      .string();
   }
 
   /**
@@ -246,6 +314,21 @@ namespace portal {
     std::string request_path;  ///< For Request.Close() on cancellation.
     GDBusConnection *conn;  ///< Borrowed — owned by the calling dbus_t/portal_t.
   };
+
+  /**
+   * @brief Get path of the XDG Portal restore token.
+   *
+   * @return Path of token that may include the session desktop as a suffix (e.g. .gnome, .kde).
+   */
+  std::filesystem::path get_saved_token_path() {
+    return restore_token_t::get_file_path();
+  }
+
+#ifdef SUNSHINE_TESTS
+  std::filesystem::path get_saved_token_path_for_testing(const std::filesystem::path &directory, const std::string &desktop) {
+    return restore_token_t::get_file_path(directory, desktop);
+  }
+#endif
 
   /**
    * @brief PipeWire stream node and negotiated capture size.
