@@ -2,6 +2,12 @@ import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../src_assets/common/assets/web/locale', () => ({ default: vi.fn() }))
+vi.mock('../../src_assets/common/assets/web/theme', () => ({
+  loadAutoTheme: vi.fn(),
+  getPreferredTheme: vi.fn(() => 'light'),
+  setupThemeToggleListener: vi.fn(),
+  showActiveTheme: vi.fn(),
+}))
 vi.mock('bootstrap/dist/js/bootstrap', () => ({}))
 
 import createI18n from '../../src_assets/common/assets/web/locale'
