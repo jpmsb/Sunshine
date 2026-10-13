@@ -63,7 +63,7 @@ void free_frame(AVFrame *frame);
 /**
  * @brief Owning pointer for an EGL frame object.
  */
-using frame_t = util::safe_ptr<AVFrame, free_frame>;
+using frame_t = util::safe_ptr<AVFrame, &free_frame>;
 
 namespace gl {
   extern GladGLContext ctx;
@@ -358,11 +358,11 @@ namespace gbm {
   /**
    * @brief Function pointer used to destroy a GBM device.
    */
-  typedef void (*device_destroy_fn)(device *gbm);
+  using device_destroy_fn = void (*)(device *gbm);
   /**
    * @brief Function pointer used to create a GBM device from a file descriptor.
    */
-  typedef device *(*create_device_fn)(int fd);
+  using create_device_fn = device *(*)(int fd);
 
   extern device_destroy_fn device_destroy;
   extern create_device_fn create_device;
