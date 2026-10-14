@@ -440,24 +440,23 @@ namespace util {
 
   public:
     /**
-     * @brief Construct a hexadecimal byte view for the supplied value.
+     * @brief Format the supplied object's byte representation as hexadecimal text.
      *
      * @param elem Element value being serialized as bytes.
      * @param rev Whether bytes should be emitted in reverse order.
      */
     Hex(const elem_type &elem, bool rev) {
-      const auto *bytes = reinterpret_cast<const uint8_t *>(&elem);
       if (!rev) {
-        const uint8_t *data = &bytes[sizeof(elem_type) - 1];
+        const auto *data = reinterpret_cast<const std::byte *>(&elem) + sizeof(elem_type) - 1;
         for (auto it = begin(); it < cend();) {
-          *it++ = _bits[*data / 16];
-          *it++ = _bits[*data-- % 16];
+          *it++ = _bits[std::to_integer<unsigned>(*data) / 16];
+          *it++ = _bits[std::to_integer<unsigned>(*data--) % 16];
         }
       } else {
-        const uint8_t *data = bytes;
+        const auto *data = reinterpret_cast<const std::byte *>(&elem);
         for (auto it = begin(); it < cend();) {
-          *it++ = _bits[*data / 16];
-          *it++ = _bits[*data++ % 16];
+          *it++ = _bits[std::to_integer<unsigned>(*data) / 16];
+          *it++ = _bits[std::to_integer<unsigned>(*data++) % 16];
         }
       }
     }
@@ -625,7 +624,7 @@ namespace util {
   }
 
   /**
-   * @brief Convert from hex.
+   * @brief Decode hexadecimal text into an object's byte representation.
    *
    * @param hex Hexadecimal text to decode.
    * @param rev Whether bytes should be emitted in reverse order.
@@ -633,22 +632,14 @@ namespace util {
    */
   template<class T>
   T from_hex(const std::string_view &hex, bool rev = false) {
-    std::array<std::uint8_t, sizeof(T)> buf;
-
-    static char constexpr shift_bit = 'a' - 'A';
+    std::array<std::byte, sizeof(T)> buf;
 
     auto is_convertable = [](char ch) -> bool {
       if (isdigit(ch)) {
         return true;
       }
 
-      ch |= shift_bit;
-
-      if ('a' > ch || ch > 'z') {
-        return false;
-      }
-
-      return true;
+      return ('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z');
     };
 
     auto buf_size = std::count_if(std::begin(hex), std::end(hex), is_convertable) / 2;
@@ -656,26 +647,27 @@ namespace util {
 
     const char *data = hex.data() + hex.size() - 1;
 
-    auto convert = [](char ch) -> std::uint8_t {
+    auto convert = [](char ch) {
       if (ch >= '0' && ch <= '9') {
-        return (std::uint8_t) ch - '0';
+        return static_cast<std::byte>(ch - '0');
       }
 
-      return (std::uint8_t) (ch | (char) 32) - 'a' + (char) 10;
+      const auto lowercase = std::byte {static_cast<unsigned char>(ch)} | std::byte {'a' - 'A'};
+      return static_cast<std::byte>(std::to_integer<unsigned>(lowercase) - 'a' + 10);
     };
 
-    std::fill_n(buf.begin() + buf_size, padding, 0);
+    std::fill_n(buf.begin() + buf_size, padding, std::byte {0});
 
     std::for_each_n(buf.begin(), buf_size, [&](auto &el) {
       while (!is_convertable(*data)) {
         --data;
       }
-      std::uint8_t ch_r = convert(*data--);
+      const auto ch_r = convert(*data--);
 
       while (!is_convertable(*data)) {
         --data;
       }
-      std::uint8_t ch_l = convert(*data--);
+      const auto ch_l = convert(*data--);
 
       el = (ch_l << 4) | ch_r;
     });
@@ -688,7 +680,7 @@ namespace util {
   }
 
   /**
-   * @brief Convert from hex vec.
+   * @brief Decode hexadecimal text into a string containing the decoded bytes.
    *
    * @param hex Hexadecimal text to decode.
    * @param rev Whether bytes should be emitted in reverse order.
@@ -697,19 +689,12 @@ namespace util {
   inline std::string from_hex_vec(const std::string &hex, bool rev = false) {
     std::string buf;
 
-    static char constexpr shift_bit = 'a' - 'A';
     auto is_convertable = [](char ch) -> bool {
       if (isdigit(ch)) {
         return true;
       }
 
-      ch |= shift_bit;
-
-      if ('a' > ch || ch > 'z') {
-        return false;
-      }
-
-      return true;
+      return ('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z');
     };
 
     auto buf_size = std::count_if(std::begin(hex), std::end(hex), is_convertable) / 2;
@@ -717,26 +702,27 @@ namespace util {
 
     const char *data = hex.data() + hex.size() - 1;
 
-    auto convert = [](char ch) -> std::uint8_t {
+    auto convert = [](char ch) {
       if (ch >= '0' && ch <= '9') {
-        return (std::uint8_t) ch - '0';
+        return static_cast<std::byte>(ch - '0');
       }
 
-      return (std::uint8_t) (ch | (char) 32) - 'a' + (char) 10;
+      const auto lowercase = std::byte {static_cast<unsigned char>(ch)} | std::byte {'a' - 'A'};
+      return static_cast<std::byte>(std::to_integer<unsigned>(lowercase) - 'a' + 10);
     };
 
     for (auto &el : buf) {
       while (!is_convertable(*data)) {
         --data;
       }
-      std::uint8_t ch_r = convert(*data--);
+      const auto ch_r = convert(*data--);
 
       while (!is_convertable(*data)) {
         --data;
       }
-      std::uint8_t ch_l = convert(*data--);
+      const auto ch_l = convert(*data--);
 
-      el = (ch_l << 4) | ch_r;
+      el = std::to_integer<char>((ch_l << 4) | ch_r);
     }
 
     if (rev) {
@@ -758,15 +744,14 @@ namespace util {
     using value_type = T;
 
     /**
-     * @brief Hash a value by viewing its object representation as bytes.
+     * @brief Hash a copy of the object's representation using the standard string-view hash.
      *
      * @param value Value whose raw bytes are hashed.
      * @return Hash value for the byte representation.
      */
     std::size_t operator()(const value_type &value) const {
-      const auto *p = reinterpret_cast<const char *>(&value);
-
-      return std::hash<std::string_view> {}(std::string_view {p, sizeof(value_type)});
+      const auto bytes = std::bit_cast<std::array<char, sizeof(value_type)>>(value);
+      return std::hash<std::string_view> {}(std::string_view {bytes.data(), bytes.size()});
     }
   };
 
@@ -902,11 +887,11 @@ namespace util {
     /**
      * @brief Pointer type stored by the unique pointer wrapper.
      */
-    using pointer = element_type *;
+    using pointer = element_type *;  // NOSONAR(cpp:S5008): Native C handle instantiations must retain HANDLE, PSID, EGLDisplay and VADisplay pointer types.
     /**
      * @brief Const pointer type exposed by the unique pointer wrapper.
      */
-    using const_pointer = element_type const *;
+    using const_pointer = element_type const *;  // NOSONAR(cpp:S5008): Native C handle instantiations must retain HANDLE, PSID, EGLDisplay and VADisplay pointer types.
     /**
      * @brief Callable type used to release the managed pointer.
      */
@@ -1643,7 +1628,7 @@ namespace util {
     /**
      * @brief Pointer type accepted by this deleter.
      */
-    using pointer = T;
+    using pointer = T;  // NOSONAR(cpp:S5008): Native C handle instantiations must retain HANDLE, PSID, EGLDisplay and VADisplay pointer types.
 
     /**
      * @brief Invoke the configured destroy function on a pointer.
@@ -1790,7 +1775,7 @@ namespace util {
        */
       static inline T big(T x) {
         if constexpr (endianness<T>::little) {
-          auto *data = reinterpret_cast<uint8_t *>(&x);
+          auto *data = reinterpret_cast<std::byte *>(&x);
 
           std::reverse(&data[0], &data[sizeof(x)]);
         }
@@ -1806,7 +1791,7 @@ namespace util {
        */
       static inline T little(T x) {
         if constexpr (endianness<T>::big) {
-          auto *data = reinterpret_cast<uint8_t *>(&x);
+          auto *data = reinterpret_cast<std::byte *>(&x);
 
           std::reverse(&data[0], &data[sizeof(x)]);
         }
@@ -1832,7 +1817,7 @@ namespace util {
         }
 
         if constexpr (endianness<T>::big) {
-          auto *data = reinterpret_cast<uint8_t *>(&*x);
+          auto *data = reinterpret_cast<std::byte *>(&*x);
 
           std::reverse(&data[0], &data[sizeof(*x)]);
         }
@@ -1852,7 +1837,7 @@ namespace util {
         }
 
         if constexpr (endianness<T>::little) {
-          auto *data = reinterpret_cast<uint8_t *>(&*x);
+          auto *data = reinterpret_cast<std::byte *>(&*x);
 
           std::reverse(&data[0], &data[sizeof(*x)]);
         }

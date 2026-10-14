@@ -1615,7 +1615,7 @@ namespace stream {
 
       frame_network_latency_logger.first_point_now();
 
-      auto session = (session_t *) packet->channel_data;
+      auto *session = packet->channel_data;
       auto lowseq = session->video.lowseq;
 
       std::string_view payload {(char *) packet->data(), packet->data_size()};
@@ -1740,9 +1740,9 @@ namespace stream {
 
         auto blockIndex = 0;
         std::for_each(fec_blocks_begin, fec_blocks_end, [&](std::string_view &current_payload) {
-          auto packets = (current_payload.size() + (blocksize - 1)) / blocksize;
+          auto payload_packets = (current_payload.size() + (blocksize - 1)) / blocksize;
 
-          for (int x = 0; x < packets; ++x) {
+          for (int x = 0; x < payload_packets; ++x) {
             auto *inspect = (video_packet_raw_t *) &current_payload[x * blocksize];
 
             inspect->packet.frameIndex = (uint32_t) packet->frame_index();
@@ -1756,7 +1756,7 @@ namespace stream {
             if (x == 0) {
               inspect->packet.flags |= FLAG_SOF;
             }
-            if (x == packets - 1) {
+            if (x == payload_packets - 1) {
               inspect->packet.flags |= FLAG_EOF;
             }
           }
@@ -1940,7 +1940,7 @@ namespace stream {
       }
 
       TUPLE_2D_REF(channel_data, packet_data, *packet);
-      auto session = (session_t *) channel_data;
+      auto *session = channel_data;
 
       auto sequenceNumber = session->audio.sequenceNumber;
       auto timestamp = session->audio.timestamp;
@@ -1992,7 +1992,7 @@ namespace stream {
             fec_packet.rtp.sequenceNumber = util::endian::big<std::uint16_t>(sequenceNumber + x + 1);
             fec_packet.fecHeader.fecShardIndex = x;
 
-            auto send_info = platf::send_info_t {
+            auto fec_send_info = platf::send_info_t {
               (const char *) &fec_packet,
               sizeof(fec_packet),
               (const char *) shards_p[RTPA_DATA_SHARDS + x],
@@ -2002,7 +2002,7 @@ namespace stream {
               session->audio.peer.port(),
               session->localAddress,
             };
-            platf::send(send_info);
+            platf::send(fec_send_info);
             BOOST_LOG(verbose) << "Audio FEC ["sv << (sequenceNumber & ~(RTPA_DATA_SHARDS - 1)) << ' ' << x << "] ::  send..."sv;
           }
         }

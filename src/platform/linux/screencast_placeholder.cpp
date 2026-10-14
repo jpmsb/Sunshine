@@ -294,7 +294,7 @@ namespace portal {
             return platf::capture_e::interrupted;
           }
           if (dummy_img(img_out.get())) {
-            return platf::capture_e::error;
+            return platf::capture_e::capture_error;
           }
           if (!push_captured_image_cb(std::move(img_out), true)) {
             return platf::capture_e::ok;

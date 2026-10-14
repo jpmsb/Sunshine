@@ -93,11 +93,12 @@ namespace nvhttp {
 
     /**
      * @brief Enable client-certificate verification after the listening socket is bound.
+     * @details Ignore the TLS preverification result and context so failed authorization can receive an HTTP error.
      */
     void after_bind() override {
       if (verify) {
         context.set_verify_mode(boost::asio::ssl::verify_peer | boost::asio::ssl::verify_fail_if_no_peer_cert | boost::asio::ssl::verify_client_once);
-        context.set_verify_callback([](int verified, boost::asio::ssl::verify_context &ctx) {
+        context.set_verify_callback([](int, boost::asio::ssl::verify_context &) {
           // To respond with an error message, a connection must be established
           return 1;
         });
@@ -125,8 +126,8 @@ namespace nvhttp {
 
         if (!ec) {
           boost::asio::ip::tcp::no_delay option(true);
-          SimpleWeb::error_code ec;
-          session->connection->socket->lowest_layer().set_option(option, ec);
+          SimpleWeb::error_code option_error;
+          session->connection->socket->lowest_layer().set_option(option, option_error);
 
           session->connection->set_timeout(config.timeout_request);
           session->connection->socket->async_handshake(boost::asio::ssl::stream_base::server, [this, session](const SimpleWeb::error_code &ec) {
@@ -718,6 +719,18 @@ namespace nvhttp {
     return pair_session_insert_e::ADDED;
   }
 
+  bool evict_abandoned_pair_session(const std::string &unique_id) {
+    std::scoped_lock lock {map_id_sess_mutex()};
+    const auto sess_it = map_id_sess.find(unique_id);
+    if (sess_it == map_id_sess.end() || sess_it->second.last_phase == PAIR_PHASE::NONE) {
+      return false;
+    }
+
+    complete_pairing(sess_it->second, false);
+    map_id_sess.erase(sess_it);
+    return true;
+  }
+
   bool is_valid_pairing_id(const std::string_view pairing_id) {
     return pairing_id.size() == PAIRING_ID_SIZE && std::ranges::all_of(pairing_id, [](const char character) {
              return (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f') || (character >= 'A' && character <= 'F');
@@ -1085,23 +1098,32 @@ namespace nvhttp {
       return false;
     }
 
-    pair_session_t sess;
-    sess.client.uniqueID = unique_id;
-    sess.client.cert = util::from_hex_vec(get_arg(args, "clientcert"), true);
-    sess.async_insert_pin.salt = get_arg(args, "salt");
-    sess.async_insert_pin.device_name = get_arg(args, "devicename");
-    sess.async_insert_pin.address = client_address;
-    sess.client_address = client_address;
-    sess.client_remote_port = request->remote_endpoint().port();
-
-    BOOST_LOG(debug) << "Pairing client certificate received ("sv << sess.client.cert.size() << " bytes)"sv;
     const bool pin_stdin = config::sunshine.flags[config::flag::PIN_STDIN];
-    if (!pin_stdin) {
-      sess.async_insert_pin.response = response;
-    }
+    auto make_session = [&]() {
+      pair_session_t fresh_sess;
+      fresh_sess.client.uniqueID = unique_id;
+      fresh_sess.client.cert = util::from_hex_vec(get_arg(args, "clientcert"), true);
+      fresh_sess.async_insert_pin.salt = get_arg(args, "salt");
+      fresh_sess.async_insert_pin.device_name = get_arg(args, "devicename");
+      fresh_sess.async_insert_pin.address = client_address;
+      fresh_sess.client_address = client_address;
+      fresh_sess.client_remote_port = request->remote_endpoint().port();
+      if (!pin_stdin) {
+        fresh_sess.async_insert_pin.response = response;
+      }
+
+      BOOST_LOG(debug) << "Pairing client certificate received ("sv << fresh_sess.client.cert.size() << " bytes)"sv;
+      return fresh_sess;
+    };
 
     std::string pairing_id;
-    switch (insert_pair_session(std::move(sess), pairing_id)) {
+    auto insert_result = insert_pair_session(make_session(), pairing_id);
+    if (insert_result == pair_session_insert_e::ALREADY_EXISTS && evict_abandoned_pair_session(unique_id)) {
+      // The previous handshake was abandoned mid-flight; the old session cannot resume,
+      // so replace it with a fresh one and retry the insert once.
+      insert_result = insert_pair_session(make_session(), pairing_id);
+    }
+    switch (insert_result) {
       using enum pair_session_insert_e;
 
       case ALREADY_EXISTS:
@@ -1116,6 +1138,9 @@ namespace nvhttp {
         return false;
       case ADDED:
         break;
+      default:
+        // All enumerators are handled above; any other value cannot occur.
+        std::unreachable();
     }
 
     if (!pin_stdin) {
@@ -1841,11 +1866,11 @@ namespace nvhttp {
     http_server.config.address = net::get_bind_address(address_family);
     http_server.config.port = port_http;
 
-    auto accept_and_run = [&](auto *http_server) {
+    auto accept_and_run = [&](auto *web_server) {
       try {
-        std::string name = "nvhttp::" + std::to_string(http_server->config.port);
+        std::string name = "nvhttp::" + std::to_string(web_server->config.port);
         platf::set_thread_name(name);
-        http_server->start();
+        web_server->start();
       } catch (boost::system::system_error &err) {
         // It's possible the exception gets thrown after calling http_server->stop() from a different thread
         if (shutdown_event->peek()) {

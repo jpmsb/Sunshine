@@ -532,13 +532,13 @@ namespace platf {
         this->plane.reset();
 
         for (; plane_p != end; ++plane_p) {
-          plane_t plane = drmModeGetPlane(fd, *plane_p);
-          if (!plane) {
+          plane_t next_plane = drmModeGetPlane(fd, *plane_p);
+          if (!next_plane) {
             BOOST_LOG(error) << "Couldn't get drm plane ["sv << (end - plane_p) << "]: "sv << strerror(errno);
             continue;
           }
 
-          this->plane = util::make_shared<plane_t>(plane.release());
+          this->plane = util::make_shared<plane_t>(next_plane.release());
           break;
         }
       }
@@ -1287,9 +1287,9 @@ namespace platf {
             this->env_logical_width = ::platf::kms::env_logical_width;
             this->env_logical_height = ::platf::kms::env_logical_height;
 
-            auto monitor = pos->crtc_to_monitor.find(plane->crtc_id);
-            if (monitor != std::end(pos->crtc_to_monitor)) {
-              auto &viewport = monitor->second.viewport;
+            auto monitor_pos = pos->crtc_to_monitor.find(plane->crtc_id);
+            if (monitor_pos != std::end(pos->crtc_to_monitor)) {
+              auto &viewport = monitor_pos->second.viewport;
 
               width = viewport.width;
               height = viewport.height;
@@ -1700,7 +1700,7 @@ namespace platf {
 
         if (!fb->handles[0]) {
           BOOST_LOG(error) << "Couldn't get handle for DRM Framebuffer ["sv << plane->fb_id << "]: Probably not permitted"sv;
-          return capture_e::error;
+          return capture_e::capture_error;
         }
 
         for (int y = 0; y < 4; ++y) {
@@ -1717,7 +1717,7 @@ namespace platf {
           file[y] = card.handleFD(fb->handles[y]);
           if (file[y].el < 0) {
             BOOST_LOG(error) << "Couldn't get primary file descriptor for Framebuffer ["sv << fb->fb_id << "]: "sv << strerror(errno);
-            return capture_e::error;
+            return capture_e::capture_error;
           }
 
           sd->fds[y] = file[y].el;
@@ -1818,7 +1818,17 @@ namespace platf {
         return 0;
       }
 
+      /**
+       * @brief Capture KMS frames until capture stops or the display needs reinitialization.
+       *
+       * @param push_captured_image_cb Callback receiving a captured image or a capture timeout.
+       * @param pull_free_image_cb Callback providing an available image buffer.
+       * @param cursor Whether the cursor should be included in the captured image.
+       * @return Final capture status reported to the streaming pipeline.
+       */
       capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) override {
+        using enum platf::capture_e;
+
         auto next_frame = std::chrono::steady_clock::now();
 
         sleep_overshoot_logger.reset();
@@ -1829,18 +1839,18 @@ namespace platf {
           std::shared_ptr<platf::img_t> img_out;
           auto status = snapshot(pull_free_image_cb, img_out, 1000ms, *cursor);
           switch (status) {
-            case platf::capture_e::reinit:
-            case platf::capture_e::error:
-            case platf::capture_e::interrupted:
+            case reinit:
+            case capture_error:
+            case interrupted:
               return status;
-            case platf::capture_e::timeout:
+            case timeout:
               if (!push_captured_image_cb(std::move(img_out), false)) {
-                return platf::capture_e::ok;
+                return ok;
               }
               break;
-            case platf::capture_e::ok:
+            case ok:
               if (!push_captured_image_cb(std::move(img_out), true)) {
-                return platf::capture_e::ok;
+                return ok;
               }
               break;
             default:
@@ -1849,7 +1859,7 @@ namespace platf {
           }
         }
 
-        return capture_e::ok;
+        return ok;
       }
 
       /**
@@ -1950,7 +1960,7 @@ namespace platf {
         auto rgb_opt = egl::import_source(display.get(), sd);
 
         if (!rgb_opt) {
-          return capture_e::error;
+          return capture_e::capture_error;
         }
 
         auto &rgb = *rgb_opt;
@@ -2084,7 +2094,17 @@ namespace platf {
         return 0;
       }
 
+      /**
+       * @brief Capture KMS frames until capture stops or the display needs reinitialization.
+       *
+       * @param push_captured_image_cb Callback receiving a captured image or a capture timeout.
+       * @param pull_free_image_cb Callback providing an available image buffer.
+       * @param cursor Whether the cursor should be included in the captured image.
+       * @return Final capture status reported to the streaming pipeline.
+       */
       capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) {
+        using enum platf::capture_e;
+
         auto next_frame = std::chrono::steady_clock::now();
 
         sleep_overshoot_logger.reset();
@@ -2095,18 +2115,18 @@ namespace platf {
           std::shared_ptr<platf::img_t> img_out;
           auto status = snapshot(pull_free_image_cb, img_out, 1000ms, *cursor);
           switch (status) {
-            case platf::capture_e::reinit:
-            case platf::capture_e::error:
-            case platf::capture_e::interrupted:
+            case reinit:
+            case capture_error:
+            case interrupted:
               return status;
-            case platf::capture_e::timeout:
+            case timeout:
               if (!push_captured_image_cb(std::move(img_out), false)) {
-                return platf::capture_e::ok;
+                return ok;
               }
               break;
-            case platf::capture_e::ok:
+            case ok:
               if (!push_captured_image_cb(std::move(img_out), true)) {
-                return platf::capture_e::ok;
+                return ok;
               }
               break;
             default:
@@ -2115,7 +2135,7 @@ namespace platf {
           }
         }
 
-        return capture_e::ok;
+        return ok;
       }
 
       /**

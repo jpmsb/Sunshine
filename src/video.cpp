@@ -302,10 +302,10 @@ namespace video {
     // If frame is not a software frame, it means we still need to transfer from main memory
     // to vram memory
     if (frame->hw_frames_ctx) {
-      auto status = av_hwframe_transfer_data(frame, sw_frame.get(), 0);
-      if (status < 0) {
+      auto transfer_status = av_hwframe_transfer_data(frame, sw_frame.get(), 0);
+      if (transfer_status < 0) {
         std::array<char, AV_ERROR_MAX_STRING_SIZE> string;
-        BOOST_LOG(error) << "Failed to transfer image data to hardware frame: "sv << av_make_error_string(string.data(), AV_ERROR_MAX_STRING_SIZE, status);
+        BOOST_LOG(error) << "Failed to transfer image data to hardware frame: "sv << av_make_error_string(string.data(), AV_ERROR_MAX_STRING_SIZE, transfer_status);
         return -1;
       }
     }
@@ -343,9 +343,9 @@ namespace video {
     av_image_fill_black(active_frame->data, linesize.data(), static_cast<AVPixelFormat>(active_frame->format), active_frame->color_range, active_frame->width, active_frame->height);
   }
 
-  int avcodec_software_encode_device_t::init(int in_width, int in_height, AVFrame *in_frame, AVPixelFormat format, bool hardware) {
+  int avcodec_software_encode_device_t::init(int in_width, int in_height, AVFrame *in_frame, AVPixelFormat format, bool hardware_frame) {
     // If the device used is hardware, yet the image resides on main memory
-    if (hardware) {
+    if (hardware_frame) {
       sw_frame.reset(av_frame_alloc());
 
       sw_frame->width = in_frame->width;
@@ -647,7 +647,7 @@ namespace video {
 
     config_t config;  ///< Stream or encoder configuration captured for the worker.
     int frame_nr;  ///< Next capture-frame number assigned to encoded packets.
-    void *channel_data;  ///< Platform-specific channel data forwarded to packet senders.
+    stream::session_t *channel_data;  ///< Stream session forwarded to packet senders.
   };
 
   /**
@@ -697,14 +697,14 @@ namespace video {
   /**
    * @brief Start the synchronous multi-client capture thread.
    *
-   * @param ctx Native context object used by the operation or callback.
+   * @param ctx Unused state required by the shared capture lifetime callback signature.
    * @return 0 when the capture thread is started.
    */
   int start_capture_sync(capture_thread_sync_ctx_t &ctx);
   /**
-   * @brief Stop capture sync processing.
+   * @brief Leave synchronous capture cleanup to the capture thread.
    *
-   * @param ctx Native context object used by the operation or callback.
+   * @param ctx Unused state required by the shared capture lifetime callback signature.
    */
   void end_capture_sync(capture_thread_sync_ctx_t &ctx);
   /**
@@ -1769,7 +1769,7 @@ namespace video {
 
       auto status = disp->capture(push_captured_image_callback, pull_free_image_callback, &display_cursor);
 
-      if (artificial_reinit && status != platf::capture_e::error) {
+      if (artificial_reinit && status != platf::capture_e::capture_error) {
         status = platf::capture_e::reinit;
 
         artificial_reinit = false;
@@ -1865,7 +1865,7 @@ namespace video {
             reinit_event.reset();
             continue;
           }
-        case platf::capture_e::error:
+        case platf::capture_e::capture_error:
         case platf::capture_e::ok:
         case platf::capture_e::timeout:
         case platf::capture_e::interrupted:
@@ -1883,11 +1883,11 @@ namespace video {
    * @param frame_nr Monotonic frame index assigned by the video pipeline.
    * @param session Active FFmpeg encoder session.
    * @param packets Output queue that receives encoded packets.
-   * @param channel_data Platform or protocol state attached to each packet.
+   * @param channel_data Stream session that receives each encoded packet.
    * @param frame_timestamp Capture timestamp associated with the encoded frame.
    * @return 0 when packets are queued; nonzero when encoding or packetization fails.
    */
-  int encode_avcodec(int64_t frame_nr, avcodec_encode_session_t &session, safe::mail_raw_t::queue_t<packet_t> &packets, void *channel_data, std::optional<std::chrono::steady_clock::time_point> frame_timestamp) {
+  int encode_avcodec(int64_t frame_nr, avcodec_encode_session_t &session, safe::mail_raw_t::queue_t<packet_t> &packets, stream::session_t *channel_data, std::optional<std::chrono::steady_clock::time_point> frame_timestamp) {
     auto &frame = session.device->frame;
     frame->pts = frame_nr;
 
@@ -1967,11 +1967,11 @@ namespace video {
    * @param frame_nr Monotonic frame index assigned by the video pipeline.
    * @param session Active NVENC encoder session.
    * @param packets Output queue that receives the encoded packet.
-   * @param channel_data Platform or protocol state attached to the packet.
+   * @param channel_data Stream session that receives the encoded packet.
    * @param frame_timestamp Capture timestamp associated with the encoded frame.
    * @return 0 when packets are queued; nonzero when NVENC encoding fails.
    */
-  int encode_nvenc(int64_t frame_nr, nvenc_encode_session_t &session, safe::mail_raw_t::queue_t<packet_t> &packets, void *channel_data, std::optional<std::chrono::steady_clock::time_point> frame_timestamp) {
+  int encode_nvenc(int64_t frame_nr, nvenc_encode_session_t &session, safe::mail_raw_t::queue_t<packet_t> &packets, stream::session_t *channel_data, std::optional<std::chrono::steady_clock::time_point> frame_timestamp) {
     auto encoded_frame = session.encode_frame(frame_nr);
     if (encoded_frame.data.empty()) {
       BOOST_LOG(error) << "NvENC returned empty packet";
@@ -2001,7 +2001,7 @@ namespace video {
    * @param frame_timestamp Frame timestamp.
    * @return 0 when the frame is encoded and queued; nonzero on encoder failure.
    */
-  int encode(int64_t frame_nr, encode_session_t &session, safe::mail_raw_t::queue_t<packet_t> &packets, void *channel_data, std::optional<std::chrono::steady_clock::time_point> frame_timestamp) {
+  int encode(int64_t frame_nr, encode_session_t &session, safe::mail_raw_t::queue_t<packet_t> &packets, stream::session_t *channel_data, std::optional<std::chrono::steady_clock::time_point> frame_timestamp) {
     if (auto avcodec_session = dynamic_cast<avcodec_encode_session_t *>(&session)) {
       return encode_avcodec(frame_nr, *avcodec_session, packets, channel_data, frame_timestamp);
     } else if (auto nvenc_session = dynamic_cast<nvenc_encode_session_t *>(&session)) {
@@ -2380,7 +2380,7 @@ namespace video {
 
     std::unique_ptr<platf::avcodec_encode_device_t> encode_device_final;
 
-    if (!encode_device->data) {
+    if (!encode_device->hardware) {
       auto software_encode_device = std::make_unique<avcodec_software_encode_device_t>();
 
       if (software_encode_device->init(width, height, frame.get(), sw_fmt, hardware)) {
@@ -2459,7 +2459,7 @@ namespace video {
    * @param encode_device Platform encode device.
    * @param reinit_event Signal raised while the encoder/display is reinitializing.
    * @param encoder Selected encoder.
-   * @param channel_data Opaque channel data passed to packets.
+   * @param channel_data Stream session carried with each encoded packet.
    */
   void encode_run(
     int &frame_nr,  // Store progress of the frame number
@@ -2470,7 +2470,7 @@ namespace video {
     std::unique_ptr<platf::encode_device_t> encode_device,
     safe::signal_t &reinit_event,
     const encoder_t &encoder,
-    void *channel_data
+    stream::session_t *channel_data
   ) {
     auto session = make_encode_session(disp.get(), encoder, config, disp->width, disp->height, std::move(encode_device));
     if (!session) {
@@ -2812,19 +2812,19 @@ namespace video {
     }
 
     if (!disp) {
-      return encode_e::error;
+      return encode_e::capture_error;
     }
 
     auto img = disp->alloc_img();
     if (!img || disp->dummy_img(img.get())) {
-      return encode_e::error;
+      return encode_e::capture_error;
     }
 
     std::vector<sync_session_t> synced_sessions;
     for (auto &ctx : synced_session_ctxs) {
       auto synced_session = make_synced_session(disp.get(), encoder, *img, *ctx);
       if (!synced_session) {
-        return encode_e::error;
+        return encode_e::capture_error;
       }
 
       synced_sessions.emplace_back(std::move(*synced_session));
@@ -2832,7 +2832,7 @@ namespace video {
 
     auto ec = platf::capture_e::ok;
     while (encode_session_ctx_queue.running()) {
-      auto push_captured_image_callback = [&](std::shared_ptr<platf::img_t> &&img, bool frame_captured) -> bool {
+      auto push_captured_image_callback = [&](std::shared_ptr<platf::img_t> &&captured_image, bool frame_captured) -> bool {
         while (encode_session_ctx_queue.peek()) {
           auto encode_session_ctx = encode_session_ctx_queue.pop();
           if (!encode_session_ctx) {
@@ -2841,9 +2841,9 @@ namespace video {
 
           synced_session_ctxs.emplace_back(std::make_unique<sync_session_ctx_t>(std::move(*encode_session_ctx)));
 
-          auto encode_session = make_synced_session(disp.get(), encoder, *img, *synced_session_ctxs.back());
+          auto encode_session = make_synced_session(disp.get(), encoder, *captured_image, *synced_session_ctxs.back());
           if (!encode_session) {
-            ec = platf::capture_e::error;
+            ec = platf::capture_e::capture_error;
             return false;
           }
 
@@ -2880,7 +2880,7 @@ namespace video {
             continue;
           }
 
-          if (frame_captured && pos->session->convert(*img)) {
+          if (frame_captured && pos->session->convert(*captured_image)) {
             BOOST_LOG(error) << "Could not convert image"sv;
             ctx->shutdown_event->raise(true);
 
@@ -2888,8 +2888,8 @@ namespace video {
           }
 
           std::optional<std::chrono::steady_clock::time_point> frame_timestamp;
-          if (img) {
-            frame_timestamp = img->frame_timestamp;
+          if (captured_image) {
+            frame_timestamp = captured_image->frame_timestamp;
           }
 
           if (encode(ctx->frame_nr++, *pos->session, ctx->packets, ctx->channel_data, frame_timestamp)) {
@@ -2938,13 +2938,13 @@ namespace video {
             BOOST_LOG(info) << "Display resolution changed; keeping capture session and rebuilding encoders"sv;
             img = disp->alloc_img();
             if (!img || disp->dummy_img(img.get())) {
-              return encode_e::error;
+              return encode_e::capture_error;
             }
             synced_sessions.clear();
             for (auto &ctx : synced_session_ctxs) {
               auto synced_session = make_synced_session(disp.get(), encoder, *img, *ctx);
               if (!synced_session) {
-                return encode_e::error;
+                return encode_e::capture_error;
               }
               synced_sessions.emplace_back(std::move(*synced_session));
             }
@@ -2952,7 +2952,7 @@ namespace video {
             continue;
           }
           [[fallthrough]];
-        case platf::capture_e::error:
+        case platf::capture_e::capture_error:
         case platf::capture_e::ok:
         case platf::capture_e::timeout:
         case platf::capture_e::interrupted:
@@ -2975,14 +2975,14 @@ namespace video {
     auto lg = util::fail_guard([&]() {
       ctx.stop();
 
-      for (auto &ctx : synced_session_ctxs) {
-        ctx->shutdown_event->raise(true);
-        ctx->join_event->raise(true);
+      for (auto &session_ctx : synced_session_ctxs) {
+        session_ctx->shutdown_event->raise(true);
+        session_ctx->join_event->raise(true);
       }
 
-      for (auto &ctx : ctx.unsafe()) {
-        ctx.shutdown_event->raise(true);
-        ctx.join_event->raise(true);
+      for (auto &pending_ctx : ctx.unsafe()) {
+        pending_ctx.shutdown_event->raise(true);
+        pending_ctx.join_event->raise(true);
       }
     });
 
@@ -3000,12 +3000,12 @@ namespace video {
    *
    * @param mail Session mail bus.
    * @param config Video configuration.
-   * @param channel_data Opaque channel data passed to packets.
+   * @param channel_data Stream session carried with each encoded packet.
    */
   void capture_async(
     safe::mail_t mail,
     config_t &config,
-    void *channel_data
+    stream::session_t *channel_data
   ) {
     auto shutdown_event = mail->event<bool>(mail::shutdown);
 
@@ -3043,7 +3043,7 @@ namespace video {
       // Wait for the display to be ready
       std::shared_ptr<platf::display_t> display;
       {
-        auto lg = ref->display_wp.lock();
+        auto display_lock = ref->display_wp.lock();
         if (ref->display_wp->expired()) {
           continue;
         }
@@ -3091,12 +3091,12 @@ namespace video {
    *
    * @param mail Session mail bus.
    * @param config Client-requested video configuration, normalized before capture begins.
-   * @param channel_data Opaque channel data passed to packets.
+   * @param channel_data Stream session carried with each encoded packet.
    */
   void capture(
     safe::mail_t mail,
     config_t config,
-    void *channel_data
+    stream::session_t *channel_data
   ) {
     config = resolve_dynamic_range(*chosen_encoder, config);
 
@@ -3646,12 +3646,6 @@ namespace video {
     return 0;
   }
 
-  // Linux only declaration
-  /**
-   * @brief Callback signature for VA-API AVCodec hardware input initialization.
-   */
-  using vaapi_init_avcodec_hardware_input_buffer_fn = int (*)(platf::avcodec_encode_device_t *encode_device, AVBufferRef **hw_device_buf);
-
   /**
    * @brief Initialize AVCodec hardware input buffers for VA-API.
    */
@@ -3659,8 +3653,8 @@ namespace video {
     avcodec_buffer_t hw_device_buf;
 
     // If an egl hwdevice
-    if (encode_device->data) {
-      if (((vaapi_init_avcodec_hardware_input_buffer_fn) encode_device->data)(encode_device, &hw_device_buf)) {
+    if (encode_device->init_hw_device) {
+      if (encode_device->init_hw_device(encode_device, &hw_device_buf)) {
         return -1;
       }
 
@@ -3680,13 +3674,11 @@ namespace video {
   }
 
 #ifdef SUNSHINE_BUILD_VULKAN
-  using vulkan_init_avcodec_hardware_input_buffer_fn = int (*)(platf::avcodec_encode_device_t *encode_device, AVBufferRef **hw_device_buf);
-
   util::Either<avcodec_buffer_t, int> vulkan_init_avcodec_hardware_input_buffer(platf::avcodec_encode_device_t *encode_device) {
     avcodec_buffer_t hw_device_buf;
 
-    if (encode_device && encode_device->data) {
-      if (((vulkan_init_avcodec_hardware_input_buffer_fn) encode_device->data)(encode_device, &hw_device_buf)) {
+    if (encode_device && encode_device->init_hw_device) {
+      if (encode_device->init_hw_device(encode_device, &hw_device_buf)) {
         return -1;
       }
       return hw_device_buf;
@@ -3754,7 +3746,7 @@ namespace video {
 /**
  * @brief No-op lock callback used when FFmpeg requires a D3D11VA lock function.
  */
-void do_nothing(void *) {
+void do_nothing(void *) {  // NOSONAR(cpp:S5008): FFmpeg's D3D11VA lock callbacks require a void pointer for user data.
 }
 
 namespace video {
@@ -3767,7 +3759,7 @@ namespace video {
 
     std::fill_n((std::uint8_t *) ctx, sizeof(AVD3D11VADeviceContext), 0);
 
-    auto device = static_cast<ID3D11Device *>(encode_device->data);
+    auto device = encode_device->d3d11_device;
 
     device->AddRef();
     ctx->device = device;
@@ -3819,16 +3811,18 @@ namespace video {
 
   /**
    * @brief Start capture sync.
+   * @details The shared lifetime callback supplies unused state; the thread accesses the shared capture queue directly.
    */
-  int start_capture_sync(capture_thread_sync_ctx_t &ctx) {
+  int start_capture_sync(capture_thread_sync_ctx_t &) {
     std::jthread {&captureThreadSync}.detach();
     return 0;
   }
 
   /**
-   * @brief Stop capture sync processing.
+   * @brief Leave synchronous capture cleanup to the capture thread.
    */
-  void end_capture_sync(capture_thread_sync_ctx_t &ctx) {
+  void end_capture_sync(capture_thread_sync_ctx_t &) {
+    // The capture thread stops its queue and signals its sessions when it exits.
   }
 
   /**

@@ -42,6 +42,8 @@ struct AVCodecContext;
 struct AVDictionary;
 
 #ifdef _WIN32
+struct ID3D11Device;
+
 // Forward declarations of boost classes to avoid having to include boost headers
 // here, which results in issues with Windows.h and WinSock2.h include order.
 namespace boost {
@@ -590,7 +592,15 @@ namespace platf {
    * @brief AVCodec-backed encode device and frame state.
    */
   struct avcodec_encode_device_t: encode_device_t {
-    void *data {};  ///< Backend-specific conversion state.
+    bool hardware = false;  ///< Whether this device supplies hardware frames instead of software conversion.
+    /**
+     * @brief Callback signature for backend-specific FFmpeg hardware device initialization.
+     */
+    using init_hw_device_fn_t = int (*)(avcodec_encode_device_t *encode_device, AVBufferRef **hw_device_buf);
+    init_hw_device_fn_t init_hw_device = nullptr;  ///< Optional backend-specific hardware device initializer.
+#ifdef _WIN32
+    ID3D11Device *d3d11_device = nullptr;  ///< Native D3D11 device borrowed while the encode device is alive.
+#endif
     AVFrame *frame {};  ///< FFmpeg frame currently owned by the encode device.
 
     /**
@@ -611,13 +621,13 @@ namespace platf {
 
     /**
      * @brief Set the frame to be encoded.
-     * @note Implementations must take ownership of 'frame'.
+     * @note Implementations must take ownership of 'new_frame'.
      *
-     * @param frame Video or graphics frame being processed.
+     * @param new_frame Video or graphics frame being processed.
      * @param hw_frames_ctx FFmpeg hardware frames context associated with the frame.
      * @return Status from updating frame.
      */
-    virtual int set_frame(AVFrame *frame, AVBufferRef *hw_frames_ctx) {
+    virtual int set_frame(AVFrame *new_frame, AVBufferRef *hw_frames_ctx) {
       BOOST_LOG(error) << "Illegal call to hwdevice_t::set_frame(). Did you forget to override it?";
       return -1;
     };
@@ -675,7 +685,7 @@ namespace platf {
     reinit,  ///< Need to reinitialize
     timeout,  ///< Timeout
     interrupted,  ///< Capture was interrupted
-    error  ///< Error
+    capture_error  ///< Capture failed.
   };
 
   /**
@@ -712,7 +722,7 @@ namespace platf {
      * Calls to this callback and push_captured_image_cb must be synchronized as well.
      * @param cursor A pointer to the flag that indicates whether the cursor should be captured as well.
      * @retval capture_e::ok When stopping
-     * @retval capture_e::error On error
+     * @retval capture_e::capture_error On error
      * @retval capture_e::reinit When need of reinitialization
      */
     virtual capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) = 0;

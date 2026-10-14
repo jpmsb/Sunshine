@@ -21,6 +21,10 @@ extern "C" {
 
 struct AVPacket;
 
+namespace stream {
+  struct session_t;
+}
+
 namespace video {
 
   /**
@@ -266,24 +270,24 @@ namespace video {
     /**
      * @brief Construct NVENC platform format mappings.
      *
-     * @param dev_type Platform memory type.
-     * @param pix_fmt_8bit Platform 8-bit pixel format.
-     * @param pix_fmt_10bit Platform 10-bit pixel format.
-     * @param pix_fmt_yuv444_8bit Platform 8-bit YUV444 pixel format.
-     * @param pix_fmt_yuv444_10bit Platform 10-bit YUV444 pixel format.
+     * @param device_type Platform memory type.
+     * @param format_8bit Platform 8-bit pixel format.
+     * @param format_10bit Platform 10-bit pixel format.
+     * @param format_yuv444_8bit Platform 8-bit YUV444 pixel format.
+     * @param format_yuv444_10bit Platform 10-bit YUV444 pixel format.
      */
     encoder_platform_formats_nvenc(
-      const platf::mem_type_e &dev_type,
-      const platf::pix_fmt_e &pix_fmt_8bit,
-      const platf::pix_fmt_e &pix_fmt_10bit,
-      const platf::pix_fmt_e &pix_fmt_yuv444_8bit,
-      const platf::pix_fmt_e &pix_fmt_yuv444_10bit
+      const platf::mem_type_e &device_type,
+      const platf::pix_fmt_e &format_8bit,
+      const platf::pix_fmt_e &format_10bit,
+      const platf::pix_fmt_e &format_yuv444_8bit,
+      const platf::pix_fmt_e &format_yuv444_10bit
     ) {
-      encoder_platform_formats_t::dev_type = dev_type;
-      encoder_platform_formats_t::pix_fmt_8bit = pix_fmt_8bit;
-      encoder_platform_formats_t::pix_fmt_10bit = pix_fmt_10bit;
-      encoder_platform_formats_t::pix_fmt_yuv444_8bit = pix_fmt_yuv444_8bit;
-      encoder_platform_formats_t::pix_fmt_yuv444_10bit = pix_fmt_yuv444_10bit;
+      encoder_platform_formats_t::dev_type = device_type;
+      encoder_platform_formats_t::pix_fmt_8bit = format_8bit;
+      encoder_platform_formats_t::pix_fmt_10bit = format_10bit;
+      encoder_platform_formats_t::pix_fmt_yuv444_8bit = format_yuv444_8bit;
+      encoder_platform_formats_t::pix_fmt_yuv444_10bit = format_yuv444_10bit;
     }
   };
 
@@ -531,7 +535,7 @@ namespace video {
     };
 
     std::vector<replace_t> *replacements = nullptr;  ///< Optional encoded-byte substitutions applied before packetization.
-    void *channel_data = nullptr;  ///< Platform or protocol state carried with this packet.
+    stream::session_t *channel_data = nullptr;  ///< Stream session that receives this packet.
     bool after_ref_frame_invalidation = false;  ///< Whether the frame follows reference-frame invalidation.
     std::optional<std::chrono::steady_clock::time_point> frame_timestamp;  ///< Capture timestamp associated with the frame.
   };
@@ -700,12 +704,12 @@ namespace video {
    *
    * @param mail Session mail bus.
    * @param config Client-requested video configuration, normalized before capture begins.
-   * @param channel_data Opaque channel data passed to packets.
+   * @param channel_data Stream session carried with each encoded packet.
    */
   void capture(
     safe::mail_t mail,
     config_t config,
-    void *channel_data
+    stream::session_t *channel_data
   );
 
   /**
