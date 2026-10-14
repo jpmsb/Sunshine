@@ -58,7 +58,7 @@
 
     auto device = display->make_avcodec_encode_device(platf::pix_fmt_e::yuv420p);
     ASSERT_NE(device, nullptr);
-    EXPECT_EQ(device->data, nullptr);
+    EXPECT_EQ(device->init_hw_device, nullptr);
   }
 
   #if defined(SUNSHINE_BUILD_VAAPI)
@@ -66,7 +66,7 @@
    * @brief VAAPI probe must not return an empty stub (forces FFmpeg av_hwdevice_ctx_create).
    *
    * When the local DRM render node is unavailable the factory returns nullptr; that is
-   * still preferable to a non-null device with a null `data` callback.
+   * still preferable to a non-null device with a null `init_hw_device` callback.
    */
   TEST(ScreencastPlaceholderTest, VaapiMemTypeWiresSunshineInitCallback) {
     auto display = portal::make_screencast_placeholder_display(platf::mem_type_e::vaapi, placeholder_test_config());
@@ -76,7 +76,7 @@
     if (!device) {
       GTEST_SKIP() << "VAAPI encode device unavailable (no usable DRM render node)";
     }
-    EXPECT_NE(device->data, nullptr);
+    EXPECT_NE(device->init_hw_device, nullptr);
   }
   #endif  // SUNSHINE_BUILD_VAAPI
 
