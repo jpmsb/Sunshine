@@ -1232,7 +1232,7 @@ namespace confighttp {
       nlohmann::json output_tree;
       nlohmann::json input_tree = nlohmann::json::parse(ss);
       if (const auto validation_error = confighttp_validation::validate_app_json(input_tree)) {
-        bad_request(response, request, *validation_error);
+        bad_request(response, *validation_error);
         return;
       }
 
@@ -1489,7 +1489,7 @@ namespace confighttp {
       uint32_t session_id = 0;
       std::string uuid;
       if (!resolve_session_target(input_tree, session_id, uuid)) {
-        bad_request(response, request, "Missing session_id or uuid");
+        bad_request(response, "Missing session_id or uuid");
         return;
       }
 
@@ -1508,7 +1508,7 @@ namespace confighttp {
       send_response(response, output_tree);
     } catch (nlohmann::json::exception &e) {
       BOOST_LOG(warning) << "Disconnect Client: "sv << e.what();
-      bad_request(response, request, e.what());
+      bad_request(response, e.what());
     }
   }
 
@@ -1540,7 +1540,7 @@ namespace confighttp {
       uint32_t session_id = 0;
       std::string uuid;
       if (!resolve_session_target(input_tree, session_id, uuid)) {
-        bad_request(response, request, "Missing session_id or uuid");
+        bad_request(response, "Missing session_id or uuid");
         return;
       }
 
@@ -1559,7 +1559,7 @@ namespace confighttp {
       send_response(response, output_tree);
     } catch (nlohmann::json::exception &e) {
       BOOST_LOG(warning) << "Pause Client: "sv << e.what();
-      bad_request(response, request, e.what());
+      bad_request(response, e.what());
     }
   }
 
@@ -1591,7 +1591,7 @@ namespace confighttp {
       uint32_t session_id = 0;
       std::string uuid;
       if (!resolve_session_target(input_tree, session_id, uuid)) {
-        bad_request(response, request, "Missing session_id or uuid");
+        bad_request(response, "Missing session_id or uuid");
         return;
       }
 
@@ -1610,7 +1610,7 @@ namespace confighttp {
       send_response(response, output_tree);
     } catch (nlohmann::json::exception &e) {
       BOOST_LOG(warning) << "Resume Client: "sv << e.what();
-      bad_request(response, request, e.what());
+      bad_request(response, e.what());
     }
   }
 
@@ -1726,7 +1726,7 @@ namespace confighttp {
       const nlohmann::json input_tree = nlohmann::json::parse(ss);
       const std::string uuid = input_tree.value("uuid", "");
       if (!confighttp_validation::validate_client_uuid(uuid)) {
-        bad_request(response, request, "Invalid uuid");
+        bad_request(response, "Invalid uuid");
         return;
       }
       const bool removed = nvhttp::unpair_client(uuid);
@@ -1869,7 +1869,7 @@ namespace confighttp {
       input_tree.erase("version");
 
       if (const auto validation_error = confighttp_validation::validate_config_patch(input_tree)) {
-        bad_request(response, request, *validation_error);
+        bad_request(response, *validation_error);
         return;
       }
 
@@ -1884,7 +1884,7 @@ namespace confighttp {
       }
       if (file_handler::write_file(config::sunshine.config_file.c_str(), config_stream.str()) != 0) {
         BOOST_LOG(error) << "SaveConfig: failed to write config file: "sv << config::sunshine.config_file;
-        bad_request(response, request, "Failed to write config file");
+        bad_request(response, "Failed to write config file");
         return;
       }
       output_tree["status"] = true;
@@ -2017,13 +2017,13 @@ namespace confighttp {
           return;
         }
         if (!proc::check_valid_png(path)) {
-          bad_request(response, request, "Invalid PNG file");
+          bad_request(response, "Invalid PNG file");
           return;
         }
       } else {
         auto data = SimpleWeb::Crypto::Base64::decode(encoded_data);
         if (!confighttp_validation::is_valid_png_bytes(data)) {
-          bad_request(response, request, "Invalid PNG file");
+          bad_request(response, "Invalid PNG file");
           return;
         }
 
@@ -2105,7 +2105,7 @@ namespace confighttp {
       nlohmann::json input_tree = nlohmann::json::parse(ss);
       const bool initial_setup = config::sunshine.username.empty();
       if (const auto validation_error = confighttp_validation::validate_password_change(input_tree, initial_setup)) {
-        bad_request(response, request, *validation_error);
+        bad_request(response, *validation_error);
         return;
       }
 
