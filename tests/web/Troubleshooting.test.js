@@ -90,13 +90,19 @@ describe('virtual input troubleshooting', () => {
     ], i18n)
 
     try {
-      expect(i18n.global.t('_common.loading')).toBe('Loading...')
-      expect(i18n.global.t('troubleshooting.driver_release_checking')).toBe('Checking...')
+      // Valid Crowdin strings must render in the active locale; malformed-message
+      // omission is covered by tests/web/locale.test.js with synthetic fixtures.
+      expect(i18n.global.t('_common.loading')).toBe(catalog._common.loading)
+      expect(i18n.global.t('troubleshooting.driver_release_checking')).toBe(
+        catalog.troubleshooting.driver_release_checking
+      )
       expect(i18n.global.t('apps.delete_confirm', { name: 'Moonlight' })).toBe(
         catalog.apps.delete_confirm.replace('{name}', 'Moonlight')
       )
       expect(wrapper.get('h1').text()).toBe(catalog.troubleshooting.troubleshooting)
-      expect(wrapper.get('.permission-table-shell th').text()).toBe('Permission')
+      expect(wrapper.get('.permission-table-shell th').text()).toBe(
+        catalog.troubleshooting.permissions_name
+      )
       expect(wrapper.get('#unpair').text()).toBe(catalog.troubleshooting.unpair_title)
       expect(wrapper.get('#logs').text()).toBe(catalog.troubleshooting.logs)
       expect(wrapper.find('.permission-table-shell tbody tr').exists()).toBe(true)
