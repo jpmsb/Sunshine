@@ -406,10 +406,27 @@ function add_debian_based_deps() {
   return 0
 }
 
+# Retry add-apt-repository: Launchpad (api.launchpad.net) often returns HTTP 504
+# while resolving PPAs, especially on aarch64 runners.
+function add_apt_repository_retry() {
+  local attempt
+  local max_attempts=6
+  for attempt in $(seq 1 "${max_attempts}"); do
+    echo "add-apt-repository attempt ${attempt}/${max_attempts}: $*"
+    if ${sudo_cmd} add-apt-repository "$@" ; then
+      return 0
+    fi
+    echo "add-apt-repository failed on attempt ${attempt}; retrying after delay"
+    sleep $((attempt * 15))
+  done
+  echo "ERROR: add-apt-repository failed after ${max_attempts} attempts: $*" >&2
+  return 1
+}
+
 function add_test_ppa() {
   if [[ "$ubuntu_test_repo" == 1 ]]; then
     $package_install_command "software-properties-common"
-    ${sudo_cmd} add-apt-repository ppa:ubuntu-toolchain-r/test -y
+    add_apt_repository_retry ppa:ubuntu-toolchain-r/test -y
   fi
   return 0
 }
@@ -426,7 +443,7 @@ function add_debian_deps() {
 function add_ubuntu_deps() {
   # Enable universe; qt6-base-dev and several other required packages live there.
   $package_install_command "software-properties-common"
-  ${sudo_cmd} add-apt-repository universe -y
+  add_apt_repository_retry universe -y
   add_test_ppa
   add_debian_based_deps
 
