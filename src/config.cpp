@@ -274,7 +274,9 @@ namespace config {
       _CONVERT_(balanced);
       _CONVERT_(quality);
       _CONVERT_(speed);
-#undef _CONVERT_
+#ifndef DOXYGEN
+  #undef _CONVERT_
+#endif
       return original;
     }
 
@@ -296,7 +298,9 @@ namespace config {
       _CONVERT_(cqp);
       _CONVERT_(vbr_latency);
       _CONVERT_(vbr_peak);
-#undef _CONVERT_
+#ifndef DOXYGEN
+  #undef _CONVERT_
+#endif
       return original;
     }
 
@@ -319,7 +323,9 @@ namespace config {
       _CONVERT_(transcoding);
       _CONVERT_(ultralowlatency);
       _CONVERT_(webcam);
-#undef _CONVERT_
+#ifndef DOXYGEN
+  #undef _CONVERT_
+#endif
       return original;
     }
 
@@ -386,7 +392,9 @@ namespace config {
       _CONVERT_(fast);
       _CONVERT_(faster);
       _CONVERT_(veryfast);
-#undef _CONVERT_
+#ifndef DOXYGEN
+  #undef _CONVERT_
+#endif
       return std::nullopt;
     }
 
@@ -591,7 +599,9 @@ namespace config {
       _CONVERT_(veryfast, 10);
       _CONVERT_(superfast, 11);
       _CONVERT_(ultrafast, 12);
-#undef _CONVERT_
+#ifndef DOXYGEN
+  #undef _CONVERT_
+#endif
       return 11;  // Default to superfast
     }
   }  // namespace sw
@@ -614,7 +624,9 @@ namespace config {
       _CONVERT_(ensure_active);
       _CONVERT_(ensure_primary);
       _CONVERT_(ensure_only_display);
-#undef _CONVERT_
+#ifndef DOXYGEN
+  #undef _CONVERT_
+#endif
       return video_t::dd_t::config_option_e::disabled;  // Default to this if value is invalid
     }
 
@@ -634,8 +646,10 @@ namespace config {
       _CONVERT_(disabled);
       _CONVERT_2_ARG_(auto, automatic);
       _CONVERT_(manual);
-#undef _CONVERT_
-#undef _CONVERT_2_ARG_
+#ifndef DOXYGEN
+  #undef _CONVERT_
+  #undef _CONVERT_2_ARG_
+#endif
       return video_t::dd_t::resolution_option_e::disabled;  // Default to this if value is invalid
     }
 
@@ -655,8 +669,10 @@ namespace config {
       _CONVERT_(disabled);
       _CONVERT_2_ARG_(auto, automatic);
       _CONVERT_(manual);
-#undef _CONVERT_
-#undef _CONVERT_2_ARG_
+#ifndef DOXYGEN
+  #undef _CONVERT_
+  #undef _CONVERT_2_ARG_
+#endif
       return video_t::dd_t::refresh_rate_option_e::disabled;  // Default to this if value is invalid
     }
 
@@ -675,8 +691,10 @@ namespace config {
 #endif
       _CONVERT_(disabled);
       _CONVERT_2_ARG_(auto, automatic);
-#undef _CONVERT_
-#undef _CONVERT_2_ARG_
+#ifndef DOXYGEN
+  #undef _CONVERT_
+  #undef _CONVERT_2_ARG_
+#endif
       return video_t::dd_t::hdr_option_e::disabled;  // Default to this if value is invalid
     }
 
@@ -743,20 +761,20 @@ namespace config {
     },  // qsv
 
     {
-      (int) amd::usage_h264_e::ultralowlatency,  // usage (h264)
-      (int) amd::usage_hevc_e::ultralowlatency,  // usage (hevc)
-      (int) amd::usage_av1_e::ultralowlatency,  // usage (av1)
-      (int) amd::rc_h264_e::vbr_latency,  // rate control (h264)
-      (int) amd::rc_hevc_e::vbr_latency,  // rate control (hevc)
-      (int) amd::rc_av1_e::vbr_latency,  // rate control (av1)
+      std::to_underlying(amd::usage_h264_e::ultralowlatency),  // usage (h264)
+      std::to_underlying(amd::usage_hevc_e::ultralowlatency),  // usage (hevc)
+      std::to_underlying(amd::usage_av1_e::ultralowlatency),  // usage (av1)
+      std::to_underlying(amd::rc_h264_e::vbr_latency),  // rate control (h264)
+      std::to_underlying(amd::rc_hevc_e::vbr_latency),  // rate control (hevc)
+      std::to_underlying(amd::rc_av1_e::vbr_latency),  // rate control (av1)
       0,  // enforce_hrd
-      (int) amd::quality_h264_e::balanced,  // quality (h264)
-      (int) amd::quality_hevc_e::balanced,  // quality (hevc)
-      (int) amd::quality_av1_e::balanced,  // quality (av1)
+      std::to_underlying(amd::quality_h264_e::balanced),  // quality (h264)
+      std::to_underlying(amd::quality_hevc_e::balanced),  // quality (hevc)
+      std::to_underlying(amd::quality_av1_e::balanced),  // quality (av1)
       0,  // preanalysis
       1,  // vbaq
       {},  // max_au_size (disabled by default)
-      (int) amd::coder_e::_auto,  // coder
+      std::to_underlying(amd::coder_e::_auto),  // coder
     },  // amd
 
     {
@@ -1026,14 +1044,13 @@ namespace config {
   /**
    * @brief Parse Sunshine configuration text into key-value entries.
    */
-  std::unordered_map<std::string, std::string> parse_config(const std::string_view &file_content) {
-    std::unordered_map<std::string, std::string> vars;
+  config_map_t parse_config(const std::string_view &file_content) {
+    config_map_t vars;
 
     auto pos = std::begin(file_content);
     auto end = std::end(file_content);
 
     while (pos < end) {
-      // auto newline = std::find_if(pos, end, [](auto ch) { return ch == '\n' || ch == '\r'; });
       TUPLE_2D(endl, var, parse_option(pos, end));
 
       pos = endl;
@@ -1045,7 +1062,7 @@ namespace config {
         continue;
       }
 
-      vars.emplace(std::move(*var));
+      vars.try_emplace(std::move(var->first), std::move(var->second));
     }
 
     return vars;
@@ -1086,7 +1103,7 @@ namespace config {
    * @param name Configuration key to consume.
    * @param destination Destination field updated when the setting exists and parses successfully.
    */
-  void string_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, std::string &destination) {
+  void string_f(config_map_t &vars, const std::string &name, std::string &destination) {
     auto it = vars.find(name);
     if (it == std::end(vars)) {
       return;
@@ -1106,7 +1123,7 @@ namespace config {
    * @param f Converter applied to the raw configuration string.
    */
   template<typename T, typename F>
-  void generic_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, T &destination, F &&f) {
+  void generic_f(config_map_t &vars, const std::string &name, T &destination, F &&f) {
     std::string tmp;
     string_f(vars, name, tmp);
     if (!tmp.empty()) {
@@ -1122,7 +1139,7 @@ namespace config {
    * @param destination Destination field updated when the setting exists and parses successfully.
    * @param allowed_vals Accepted string values for this setting.
    */
-  void string_restricted_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, std::string &destination, const std::vector<std::string_view> &allowed_vals) {
+  void string_restricted_f(config_map_t &vars, const std::string &name, std::string &destination, const std::vector<std::string_view> &allowed_vals) {
     std::string temp;
     string_f(vars, name, temp);
 
@@ -1141,7 +1158,7 @@ namespace config {
    * @param name Setting name.
    * @param output Parsed string list.
    */
-  void string_list_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, std::vector<std::string> &output) {  // NOSONAR(cpp:S6045): transparent hasher not available for unordered_map in this codebase
+  void string_list_f(config_map_t &vars, const std::string &name, std::vector<std::string> &output) {
     std::string temp;
     string_f(vars, name, temp);
 
@@ -1169,7 +1186,7 @@ namespace config {
    * @param name Configuration key to consume.
    * @param destination Destination field updated when the setting exists and parses successfully.
    */
-  void path_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, fs::path &destination) {
+  void path_f(config_map_t &vars, const std::string &name, fs::path &destination) {
     // appdata needs to be retrieved once only
     static auto appdata = platf::appdata();
 
@@ -1200,7 +1217,7 @@ namespace config {
    * @param name Configuration key to consume.
    * @param destination Destination field updated when the setting exists and parses successfully.
    */
-  void path_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, std::string &destination) {
+  void path_f(config_map_t &vars, const std::string &name, std::string &destination) {
     fs::path temp = destination;
 
     path_f(vars, name, temp);
@@ -1232,7 +1249,7 @@ namespace config {
    * @param name Configuration key to consume.
    * @param destination Destination field updated when the setting exists and parses successfully.
    */
-  void int_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, int &destination) {
+  void int_f(config_map_t &vars, const std::string &name, int &destination) {
     auto it = vars.find(name);
 
     if (it == std::end(vars)) {
@@ -1250,7 +1267,7 @@ namespace config {
    * @param name Configuration key to consume.
    * @param destination Destination field updated when the setting exists and parses successfully.
    */
-  void int_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, std::optional<int> &destination) {
+  void int_f(config_map_t &vars, const std::string &name, std::optional<int> &destination) {
     auto it = vars.find(name);
 
     if (it == std::end(vars)) {
@@ -1270,7 +1287,7 @@ namespace config {
    * @param f Converter applied to the raw configuration string.
    */
   template<class F>
-  void int_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, int &destination, F &&f) {
+  void int_f(config_map_t &vars, const std::string &name, int &destination, F &&f) {
     std::string tmp;
     string_f(vars, name, tmp);
     if (!tmp.empty()) {
@@ -1287,7 +1304,7 @@ namespace config {
    * @param f Converter applied to the raw configuration string.
    */
   template<class F>
-  void int_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, std::optional<int> &destination, F &&f) {
+  void int_f(config_map_t &vars, const std::string &name, std::optional<int> &destination, F &&f) {
     std::string tmp;
     string_f(vars, name, tmp);
     if (!tmp.empty()) {
@@ -1303,7 +1320,7 @@ namespace config {
    * @param destination Destination field updated when the setting exists and parses successfully.
    * @param range Inclusive range accepted for the parsed value.
    */
-  void int_between_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, int &destination, const std::pair<int, int> &range) {
+  void int_between_f(config_map_t &vars, const std::string &name, int &destination, const std::pair<int, int> &range) {
     int temp = destination;
 
     int_f(vars, name, temp);
@@ -1340,7 +1357,7 @@ namespace config {
    * @param name Configuration key to consume.
    * @param destination Destination field updated when the setting exists and parses successfully.
    */
-  void bool_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, bool &destination) {
+  void bool_f(config_map_t &vars, const std::string &name, bool &destination) {
     std::string tmp;
     string_f(vars, name, tmp);
 
@@ -1358,7 +1375,7 @@ namespace config {
    * @param name Configuration key to consume.
    * @param destination Destination field updated when the setting exists and parses successfully.
    */
-  void double_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, double &destination) {
+  void double_f(config_map_t &vars, const std::string &name, double &destination) {
     std::string tmp;
     string_f(vars, name, tmp);
 
@@ -1384,7 +1401,7 @@ namespace config {
    * @param destination Destination field updated when the setting exists and parses successfully.
    * @param range Inclusive range accepted for the parsed value.
    */
-  void double_between_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, double &destination, const std::pair<double, double> &range) {
+  void double_between_f(config_map_t &vars, const std::string &name, double &destination, const std::pair<double, double> &range) {
     double temp = destination;
 
     double_f(vars, name, temp);
@@ -1402,7 +1419,7 @@ namespace config {
    * @param name Configuration key to consume.
    * @param destination Destination field updated when the setting exists and parses successfully.
    */
-  void list_string_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, std::vector<std::string> &destination) {
+  void list_string_f(config_map_t &vars, const std::string &name, std::vector<std::string> &destination) {
     std::string string;
     string_f(vars, name, string);
 
@@ -1448,7 +1465,7 @@ namespace config {
    * @param name Configuration key to consume.
    * @param destination Destination field updated when the setting exists and parses successfully.
    */
-  void list_prep_cmd_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, std::vector<prep_cmd_t> &destination) {
+  void list_prep_cmd_f(config_map_t &vars, const std::string &name, std::vector<prep_cmd_t> &destination) {
     std::string string;
     string_f(vars, name, string);
 
@@ -1481,7 +1498,7 @@ namespace config {
    * @param name Configuration key to consume.
    * @param destination Destination field updated when the setting exists and parses successfully.
    */
-  void list_int_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, std::vector<int> &destination) {
+  void list_int_f(config_map_t &vars, const std::string &name, std::vector<int> &destination) {
     std::vector<std::string> list;
     list_string_f(vars, name, list);
 
@@ -1521,7 +1538,7 @@ namespace config {
    * @param name Configuration key to consume.
    * @param destination Destination field updated when the setting exists and parses successfully.
    */
-  void map_int_int_f(std::unordered_map<std::string, std::string> &vars, const std::string &name, std::unordered_map<int, int> &destination) {
+  void map_int_int_f(config_map_t &vars, const std::string &name, std::unordered_map<int, int> &destination) {
     std::vector<int> list;
     list_int_f(vars, name, list);
 
@@ -1594,7 +1611,7 @@ namespace config {
   /**
    * @brief Log parsed configuration entries and optionally record them as modified.
    */
-  void log_config_settings(const std::unordered_map<std::string, std::string> &vars, bool save) {
+  void log_config_settings(const config_map_t &vars, bool save) {
     for (auto &[name, val] : vars) {
       bool is_redacted = std::ranges::find(config::redacted_config, name) != config::redacted_config.end();
 
@@ -1611,7 +1628,7 @@ namespace config {
    *
    * @param vars Parsed configuration entries; consumed keys are erased.
    */
-  void apply_config(std::unordered_map<std::string, std::string> &&vars) {
+  void apply_config(config_map_t &&vars) {
     log_config_settings(vars, true);
 
     int_f(vars, "qp", video.qp);
@@ -1982,7 +1999,7 @@ namespace config {
    * @brief Parse serialized text into the corresponding runtime representation.
    */
   int parse(int argc, char *argv[]) {
-    std::unordered_map<std::string, std::string> cmd_vars;
+    config_map_t cmd_vars;
 #ifdef _WIN32
     bool shortcut_launch = false;
     bool service_admin_launch = false;
@@ -2034,7 +2051,7 @@ namespace config {
             cmd_vars.erase(it);
           }
 
-          cmd_vars.emplace(std::move(*var));
+          cmd_vars.try_emplace(std::move(var->first), std::move(var->second));
         }
       }
     }
@@ -2053,7 +2070,7 @@ namespace config {
       auto vars = parse_config(file_handler::read_file(sunshine.config_file.c_str()));
 
       for (auto &[name, value] : cmd_vars) {
-        vars.insert_or_assign(std::move(name), std::move(value));
+        vars.insert_or_assign(name, std::move(value));
       }
 
       // Apply the config. Note: This will try to create any paths

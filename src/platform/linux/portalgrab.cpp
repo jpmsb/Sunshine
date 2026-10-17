@@ -1758,7 +1758,7 @@ namespace portal {
     bool capture_started_ = false;  ///< True after capture() runs (excludes encoder-only probes).
 
     // Class variable to store runtime state of maxFramerate negotiation
-    static inline std::atomic<bool> negotiate_maxframerate {true};  ///< Whether portal negotiation should request the maximum frame rate.
+    static inline std::atomic negotiate_maxframerate {true};  ///< Whether portal negotiation should request the maximum frame rate.
   };
 
   /**

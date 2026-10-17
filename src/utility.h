@@ -331,11 +331,11 @@ namespace util {
     FailGuard() = delete;
 
     /**
-     * @brief Construct a fail guard that owns the cleanup callback.
+     * @brief Explicitly construct a fail guard that owns the cleanup callback.
      *
      * @param f Callable executed by the helper.
      */
-    FailGuard(T &&f) noexcept:
+    explicit FailGuard(T &&f) noexcept:
         _func {std::forward<T>(f)} {
     }
 
@@ -345,9 +345,8 @@ namespace util {
      * @param other Source object whose state is copied or moved into this object.
      */
     FailGuard(FailGuard &&other) noexcept:
+        failure {other.failure},
         _func {std::move(other._func)} {
-      this->failure = other.failure;
-
       other.failure = false;
     }
 
@@ -626,6 +625,8 @@ namespace util {
   /**
    * @brief Decode hexadecimal text into an object's byte representation.
    *
+   * Digits beyond the size of the object are ignored, keeping the low-order bytes.
+   *
    * @param hex Hexadecimal text to decode.
    * @param rev Whether bytes should be emitted in reverse order.
    * @return Value converted from hex.
@@ -634,7 +635,7 @@ namespace util {
   T from_hex(const std::string_view &hex, bool rev = false) {
     std::array<std::byte, sizeof(T)> buf;
 
-    auto is_convertable = [](char ch) -> bool {
+    auto is_convertable = [](char ch) {
       if (isdigit(ch)) {
         return true;
       }
@@ -642,7 +643,7 @@ namespace util {
       return ('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z');
     };
 
-    auto buf_size = std::count_if(std::begin(hex), std::end(hex), is_convertable) / 2;
+    auto buf_size = std::min<std::size_t>(std::ranges::count_if(hex, is_convertable) / 2, sizeof(T));
     auto padding = sizeof(T) - buf_size;
 
     const char *data = hex.data() + hex.size() - 1;
@@ -673,7 +674,7 @@ namespace util {
     });
 
     if (rev) {
-      std::reverse(std::begin(buf), std::end(buf));
+      std::ranges::reverse(buf);
     }
 
     return std::bit_cast<T>(buf);
@@ -689,7 +690,7 @@ namespace util {
   inline std::string from_hex_vec(const std::string &hex, bool rev = false) {
     std::string buf;
 
-    auto is_convertable = [](char ch) -> bool {
+    auto is_convertable = [](char ch) {
       if (isdigit(ch)) {
         return true;
       }
@@ -697,7 +698,7 @@ namespace util {
       return ('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z');
     };
 
-    auto buf_size = std::count_if(std::begin(hex), std::end(hex), is_convertable) / 2;
+    auto buf_size = std::ranges::count_if(hex, is_convertable) / 2;
     buf.resize(buf_size);
 
     const char *data = hex.data() + hex.size() - 1;
@@ -726,7 +727,7 @@ namespace util {
     }
 
     if (rev) {
-      std::reverse(std::begin(buf), std::end(buf));
+      std::ranges::reverse(buf);
     }
 
     return buf;
@@ -897,14 +898,18 @@ namespace util {
      */
     using deleter_type = D;
 
-    constexpr uniq_ptr() noexcept:
-        _p {nullptr} {
-    }
+    /**
+     * @brief Initialize an empty unique ownership wrapper.
+     */
+    constexpr uniq_ptr() noexcept = default;
 
     /**
-     * @brief Construct a unique ownership wrapper.
+     * @brief Construct an empty wrapper implicitly from nullptr, matching std::unique_ptr.
      */
-    constexpr uniq_ptr(std::nullptr_t) noexcept:
+#ifndef DOXYGEN
+    explicit(false)
+#endif
+      constexpr uniq_ptr(std::nullptr_t) noexcept:
         _p {nullptr} {
     }
 
@@ -912,34 +917,40 @@ namespace util {
     uniq_ptr &operator=(const uniq_ptr &other) noexcept = delete;
 
     /**
-     * @brief Construct a unique ownership wrapper.
+     * @brief Explicitly construct a unique ownership wrapper.
      *
      * @param p Pointer passed to the deleter or conversion helper.
      */
     template<class V>
-    uniq_ptr(V *p) noexcept:
+    explicit uniq_ptr(V *p) noexcept:
         _p {p} {
       static_assert(std::is_same_v<element_type, void> || std::is_same_v<element_type, V> || std::is_base_of_v<element_type, V>, "element_type must be base class of V");
     }
 
     /**
-     * @brief Construct a unique ownership wrapper.
+     * @brief Transfer compatible standard unique-pointer ownership implicitly.
      *
      * @param uniq Unique pointer whose owned value is transferred.
      */
     template<class V>
-    uniq_ptr(std::unique_ptr<V, deleter_type> &&uniq) noexcept:
+#ifndef DOXYGEN
+    explicit(false)
+#endif
+      uniq_ptr(std::unique_ptr<V, deleter_type> &&uniq) noexcept:
         _p {uniq.release()} {
       static_assert(std::is_same_v<element_type, void> || std::is_same_v<T, V> || std::is_base_of_v<element_type, V>, "element_type must be base class of V");
     }
 
     /**
-     * @brief Construct a unique ownership wrapper.
+     * @brief Transfer compatible Sunshine unique-pointer ownership implicitly.
      *
      * @param other Source object whose state is copied or moved into this object.
      */
     template<class V>
-    uniq_ptr(uniq_ptr<V, deleter_type> &&other) noexcept:
+#ifndef DOXYGEN
+    explicit(false)
+#endif
+      uniq_ptr(uniq_ptr<V, deleter_type> &&other) noexcept:
         _p {other.release()} {
       static_assert(std::is_same_v<element_type, void> || std::is_same_v<T, V> || std::is_base_of_v<element_type, V>, "element_type must be base class of V");
     }
@@ -1099,7 +1110,7 @@ namespace util {
     }
 
   protected:
-    pointer _p;  ///< Pointer currently owned by the wrapper.
+    pointer _p {nullptr};  ///< Pointer currently owned by the wrapper, initially empty.
     deleter_type _deleter;  ///< Callable used to release `_p`.
   };
 
@@ -1269,21 +1280,21 @@ namespace util {
     }
 
     /**
-     * @brief Construct an owning or non-owning wrapper around a raw pointer.
+     * @brief Explicitly construct an owning or non-owning wrapper around a raw pointer.
      *
      * @param p Pointer passed to the deleter or conversion helper.
      */
-    wrap_ptr(pointer p):
+    explicit wrap_ptr(pointer p):
         _own_ptr {false},
         _p {p} {
     }
 
     /**
-     * @brief Construct an owning or non-owning wrapper around a raw pointer.
+     * @brief Explicitly construct an owning or non-owning wrapper around a raw pointer.
      *
      * @param uniq_p Uniq p.
      */
-    wrap_ptr(std::unique_ptr<element_type> &&uniq_p):
+    explicit wrap_ptr(std::unique_ptr<element_type> &&uniq_p):
         _own_ptr {true},
         _p {uniq_p.release()} {
     }
@@ -1416,15 +1427,17 @@ namespace util {
    * @brief Helper specialization for optional values.
    */
   template<class T>
-  struct __false_v<T, std::enable_if_t<instantiation_of_v<std::optional, T>>> {
+    requires instantiation_of_v<std::optional, T>
+  struct __false_v<T> {
     static constexpr std::nullopt_t value = std::nullopt;  ///< Value.
   };
 
   /**
-   * @brief Enables an overload only when the provided type is a pointer.
+   * @brief Select a null sentinel for raw and supported smart pointer types.
    */
   template<class T>
-  struct __false_v<T, std::enable_if_t<is_pointer_v<T>>> {
+    requires is_pointer_v<T>
+  struct __false_v<T> {
     static constexpr std::nullptr_t value = nullptr;  ///< Value.
   };
 
@@ -1432,7 +1445,8 @@ namespace util {
    * @brief Type trait comparing a value with a boolean template argument.
    */
   template<class T>
-  struct __false_v<T, std::enable_if_t<std::is_same_v<T, bool>>> {
+    requires std::is_same_v<T, bool>
+  struct __false_v<T> {
     static constexpr bool value = false;  ///< Trait value for the false specialization.
   };
 
@@ -1469,14 +1483,14 @@ namespace util {
     }
 
     /**
-     * @brief Construct an owning contiguous buffer.
+     * @brief Copy the source buffer's logical range into an independent allocation.
      *
      * @param o Source object used for comparison or assignment.
      */
     buffer_t(const buffer_t &o):
         _els {o._els},
         _buf(_els) {
-      std::copy(o.begin(), o.end(), begin());
+      std::ranges::copy(o, begin());
     }
 
     /**
@@ -1635,7 +1649,7 @@ namespace util {
      *
      * @param p Pointer to release.
      */
-    void operator()(pointer p) {
+    void operator()(pointer p) const {
       function(p);
     }
   };
@@ -1763,10 +1777,11 @@ namespace util {
     struct endian_helper {};
 
     /**
-     * @brief Helper specialization for optional values.
+     * @brief Convert non-optional values between native and requested byte order.
      */
     template<class T>
-    struct endian_helper<T, std::enable_if_t<!(instantiation_of_v<std::optional, T>)>> {
+      requires(!instantiation_of_v<std::optional, T>)
+    struct endian_helper<T> {
       /**
        * @brief Convert a value to or from big-endian byte order.
        *
@@ -1804,7 +1819,8 @@ namespace util {
      * @brief Helper specialization for optional values.
      */
     template<class T>
-    struct endian_helper<T, std::enable_if_t<instantiation_of_v<std::optional, T>>> {
+      requires instantiation_of_v<std::optional, T>
+    struct endian_helper<T> {
       /**
        * @brief Convert a value to or from little-endian byte order.
        *
