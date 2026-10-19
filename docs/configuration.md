@@ -2305,7 +2305,7 @@ min_log_level = 2
             @endcode</td>
     </tr>
     <tr>
-        <td rowspan="9">Choices</td>
+        <td rowspan="10">Choices</td>
         <td>nvfbc</td>
         <td>Use NVIDIA Frame Buffer Capture to capture direct to GPU memory. This is usually the fastest method for
             NVIDIA cards. NvFBC does not have native Wayland support and does not work with XWayland.
