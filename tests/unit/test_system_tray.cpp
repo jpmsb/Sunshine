@@ -728,6 +728,32 @@ TEST_F(SystemTrayTest, LifecycleMenuAndStateTransitions) {
   exit_thread.join();
   EXPECT_FALSE(system_tray::tray_initialized_for_testing());
 }
+
+/**
+ * @brief Without a tray, run_tray_until_exit must wait instead of shutting Sunshine down.
+ */
+TEST_F(SystemTrayTest, RunTrayUntilExitWithoutInitDoesNotRaiseShutdown) {
+  ASSERT_FALSE(system_tray::tray_initialized_for_testing());
+
+  auto shutdown_event = std::make_shared<safe::event_t<bool>>();
+  std::atomic<bool> loop_started {false};
+  std::jthread tray_thread([&]() {
+    loop_started.store(true);
+    system_tray::run_tray_until_exit(shutdown_event);
+  });
+
+  const auto deadline = std::chrono::steady_clock::now() + 2s;
+  while (!loop_started.load() && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(10ms);
+  }
+  ASSERT_TRUE(loop_started.load());
+  std::this_thread::sleep_for(100ms);
+  EXPECT_FALSE(shutdown_event->peek());
+
+  shutdown_event->raise(true);
+  tray_thread.join();
+  EXPECT_TRUE(shutdown_event->peek());
+}
   #endif
 
   #ifdef _WIN32
