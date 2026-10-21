@@ -1439,10 +1439,8 @@ namespace system_tray {
   }
 
   void run_tray_until_exit(const std::shared_ptr<safe::event_t<bool>> &shutdown_event) {
-    // Tray init can fail (headless session, missing Qt display, etc.). Raising shutdown
-    // here would tear down nvhttp/confighttp even though the servers started successfully.
     if (!tray_initialized_state().load()) {
-      BOOST_LOG(warning) << "System tray is not initialized; continuing without tray event loop"sv;
+      BOOST_LOG(info) << "System tray is unavailable; continuing without it"sv;
       shutdown_event->view();
       return;
     }
