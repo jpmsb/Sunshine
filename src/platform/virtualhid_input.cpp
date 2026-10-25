@@ -203,7 +203,7 @@ namespace platf::virtualhid {
         BOOST_LOG(info) << "Gamepad will be DualSense controller (auto-selected by motion sensor presence)"sv;
         return profile_for_name("ds5"sv);
       }
-      if (config::input.touchpad_as_ds4 && (metadata.capabilities & LI_CCAP_TOUCHPAD)) {
+      if (config::input.mouse && config::input.touchpad_as_ds4 && (metadata.capabilities & LI_CCAP_TOUCHPAD)) {
         BOOST_LOG(info) << "Gamepad will be DualSense controller (auto-selected by touchpad presence)"sv;
         return profile_for_name("ds5"sv);
       }
@@ -797,6 +797,10 @@ namespace platf::virtualhid {
 
     auto &gamepad = context.gamepads[touch.id.globalIndex];
     if (!gamepad->adapter->support().supports_touchpad) {
+      return;
+    }
+
+    if (!config::input.mouse && touch.eventType != LI_TOUCH_EVENT_CANCEL_ALL) {
       return;
     }
 
