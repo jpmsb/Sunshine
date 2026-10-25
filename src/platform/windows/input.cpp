@@ -696,7 +696,7 @@ namespace platf {
     } else if (config::input.motion_as_ds4 && (metadata.capabilities & (LI_CCAP_ACCEL | LI_CCAP_GYRO))) {
       BOOST_LOG(info) << "Gamepad " << id.globalIndex << " will be DualShock 4 controller (auto-selected by motion sensor presence)"sv;
       selectedGamepadType = DualShock4Wired;
-    } else if (config::input.touchpad_as_ds4 && (metadata.capabilities & LI_CCAP_TOUCHPAD)) {
+    } else if (config::input.mouse && config::input.touchpad_as_ds4 && (metadata.capabilities & LI_CCAP_TOUCHPAD)) {
       BOOST_LOG(info) << "Gamepad " << id.globalIndex << " will be DualShock 4 controller (auto-selected by touchpad presence)"sv;
       selectedGamepadType = DualShock4Wired;
     } else {
@@ -1183,6 +1183,10 @@ namespace platf {
    * @param touch The touch event.
    */
   void gamepad_touch(input_t &input, const gamepad_touch_t &touch) {
+    if (!config::input.mouse && touch.eventType != LI_TOUCH_EVENT_CANCEL_ALL) {
+      return;
+    }
+
     auto raw = (input_raw_t *) input.get();
     if (virtualhid::has_gamepad(raw->virtualhid, touch.id.globalIndex)) {
       virtualhid::gamepad_touch(raw->virtualhid, touch);
