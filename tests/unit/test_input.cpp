@@ -19,6 +19,9 @@
 #include <thread>
 #include <vector>
 
+// lib includes
+#include <boost/endian/buffers.hpp>
+
 // moonlight-common-c includes
 extern "C" {
 #include <moonlight-common-c/src/Input.h>
@@ -641,4 +644,41 @@ TEST_F(InputGamepadSessionTest, RetargetsRelativeMouseFromLatestStreamGeometry) 
   EXPECT_EQ(mouse_event.x, -5);
   EXPECT_EQ(mouse_event.y, 9);
   EXPECT_EQ(context().mouse_viewport.offset_x, 0);
+}
+
+TEST_F(InputGamepadSessionTest, DiscardsControllerTouchWhenMouseInputIsDisabled) {
+  config::input.gamepad = "ds5";
+  const std::string session_id = "controller-touch-mouse-disabled";
+  const auto capabilities = static_cast<std::uint16_t>(LI_CCAP_TOUCHPAD);
+  auto stream_input = input::alloc(std::make_shared<safe::mail_raw_t>(), session_id);
+  const auto id = input::testing::alloc_gamepad(stream_input, 0, {LI_CTYPE_PS, capabilities, 0});
+  ASSERT_GE(id, 0);
+  auto *adapter = platf::virtualhid::gamepad_adapter_for_testing(context(), id);
+  ASSERT_NE(adapter, nullptr);
+
+  config::input.mouse = false;
+
+  SS_CONTROLLER_TOUCH_PACKET touch {};
+  touch.header.size = util::endian::big<std::uint32_t>(sizeof(touch) - sizeof(touch.header.size));
+  touch.header.magic = util::endian::little(SS_CONTROLLER_TOUCH_MAGIC);
+  touch.controllerNumber = 0;
+  touch.eventType = LI_TOUCH_EVENT_DOWN;
+  touch.pointerId = util::endian::little<std::uint32_t>(1);
+  boost::endian::endian_store<float, sizeof(float), boost::endian::order::little>(touch.x, 0.5F);
+  boost::endian::endian_store<float, sizeof(float), boost::endian::order::little>(touch.y, 0.5F);
+  boost::endian::endian_store<float, sizeof(float), boost::endian::order::little>(touch.pressure, 1.0F);
+
+  std::vector<std::uint8_t> bytes(sizeof(touch));
+  std::memcpy(bytes.data(), &touch, sizeof(touch));
+  input::passthrough(stream_input, std::vector<std::uint8_t>(bytes));
+  input::testing::process_queued_messages(stream_input);
+
+  EXPECT_FALSE(adapter->state().touchpad_contacts[0].active);
+
+  config::input.mouse = true;
+
+  input::passthrough(stream_input, std::move(bytes));
+  input::testing::process_queued_messages(stream_input);
+
+  EXPECT_TRUE(adapter->state().touchpad_contacts[0].active);
 }
