@@ -405,13 +405,21 @@ namespace crypto {
     const ASN1_BIT_STRING *asn1 = nullptr;
     X509_get0_signature(&asn1, nullptr, x.get());
 
-    // Prefer the historic accessor unless 4.1 deprecations are hidden. Homebrew
-    // macOS images can compile against default openssl 4.1 headers while still
-    // linking openssl@3, which does not export ASN1_STRING_get_length().
+    // Homebrew macOS runners expose OpenSSL 4.1 headers in /opt/homebrew/include
+    // while CMake may still link openssl@3. ASN1_STRING_get_length() is 4.1-only,
+    // and ASN1_STRING_length() is deprecated there. Use the historic symbol with
+    // a local warning suppression so both header/library combinations link.
 #if defined(OPENSSL_NO_DEPRECATED_4_1)
     const auto length = ASN1_STRING_get_length(asn1);
 #else
+  #if defined(__GNUC__) || defined(__clang__)
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+  #endif
     const auto length = static_cast<std::size_t>(ASN1_STRING_length(asn1));
+  #if defined(__GNUC__) || defined(__clang__)
+    #pragma GCC diagnostic pop
+  #endif
 #endif
 
     return {
