@@ -143,9 +143,14 @@ jobs:
           APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
         run: |
           icu4c_root="$(brew --prefix icu4c@78 2>/dev/null)"
-          export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-I${icu4c_root}/include"
-          export LDFLAGS="${LDFLAGS:+${LDFLAGS} }-L${icu4c_root}/lib"
-          export LIBRARY_PATH="${icu4c_root}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
+          openssl_root="$(brew --prefix openssl@3 2>/dev/null)"
+          export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-I${icu4c_root}/include -I${openssl_root}/include"
+          export LDFLAGS="${LDFLAGS:+${LDFLAGS} }-L${icu4c_root}/lib -L${openssl_root}/lib"
+          export LIBRARY_PATH="${icu4c_root}/lib:${openssl_root}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
+          # Homebrew's default openssl 4.1 headers live in /opt/homebrew/include and
+          # can win via CPATH over openssl@3 -isystem paths.
+          export CPATH="${openssl_root}/include${CPATH:+:${CPATH}}"
+          export CPLUS_INCLUDE_PATH="${openssl_root}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
 
           mkdir -p build
           cmake \
@@ -155,7 +160,8 @@ jobs:
             -DBUILD_WERROR=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DICU_ROOT="${icu4c_root}" \
-            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3 2>/dev/null)" \
+            -DOPENSSL_ROOT_DIR="${openssl_root}" \
+            -DOPENSSL_INCLUDE_DIR="${openssl_root}/include" \
             -DOpus_ROOT_DIR="$(brew --prefix opus 2>/dev/null)" \
             -DQt6_DIR="$(brew --prefix qtbase 2>/dev/null)/lib/cmake/Qt6" \
             -DQt6Svg_DIR="$(brew --prefix qtsvg 2>/dev/null)/lib/cmake/Qt6Svg" \
