@@ -109,7 +109,7 @@ jobs:
             pkgconf \
             icu4c@78 \
             miniupnpc \
-            openssl@3 \
+            openssl \
             opus \
             qtbase \
             qtsvg
@@ -143,14 +143,12 @@ jobs:
           APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
         run: |
           icu4c_root="$(brew --prefix icu4c@78 2>/dev/null)"
-          openssl_root="$(brew --prefix openssl@3 2>/dev/null)"
+          # Prefer the linked Homebrew openssl (4.1 on macos-15). openssl@3 is keg-only
+          # and its headers lose to /opt/homebrew/include, which breaks the link.
+          openssl_root="$(brew --prefix openssl 2>/dev/null || brew --prefix openssl@3 2>/dev/null)"
           export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-I${icu4c_root}/include -I${openssl_root}/include"
           export LDFLAGS="${LDFLAGS:+${LDFLAGS} }-L${icu4c_root}/lib -L${openssl_root}/lib"
           export LIBRARY_PATH="${icu4c_root}/lib:${openssl_root}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
-          # Homebrew's default openssl 4.1 headers live in /opt/homebrew/include and
-          # can win via CPATH over openssl@3 -isystem paths.
-          export CPATH="${openssl_root}/include${CPATH:+:${CPATH}}"
-          export CPLUS_INCLUDE_PATH="${openssl_root}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
 
           mkdir -p build
           cmake \
