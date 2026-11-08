@@ -218,10 +218,12 @@ if(${SUNSHINE_TRAY} STREQUAL 1)
             devel/libnotify
     )
     if(SUNSHINE_TRAY_QT_VERSION EQUAL 6)
+        # Qt loads platform plugins at runtime, so shlibdeps cannot detect this dependency.
         set(CPACK_DEBIAN_PACKAGE_DEPENDS "\
                     ${CPACK_DEBIAN_PACKAGE_DEPENDS}, \
                     libqt6widgets6, \
-                    libqt6svg6"
+                    libqt6svg6, \
+                    qt6-qpa-plugins"
         )
         if(SUNSHINE_RPM_DISTRO STREQUAL "suse")
             set(CPACK_RPM_PACKAGE_REQUIRES "\
