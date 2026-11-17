@@ -45,7 +45,7 @@ namespace {
   constexpr const char *PORTAL_PATH = "/org/freedesktop/portal/desktop";
 
   /**
-   * @brief Portal methods used by Sunshine to set up a RemoteDesktop session.
+   * @brief Portal methods used by Sunshine for RemoteDesktop and ScreenCast-only sessions.
    */
   constexpr const char *PORTAL_XML = R"(
 <node>
@@ -67,8 +67,18 @@ namespace {
     </method>
   </interface>
   <interface name='org.freedesktop.portal.ScreenCast'>
+    <method name='CreateSession'>
+      <arg type='a{sv}' direction='in'/>
+      <arg type='o' direction='out'/>
+    </method>
     <method name='SelectSources'>
       <arg type='o' direction='in'/>
+      <arg type='a{sv}' direction='in'/>
+      <arg type='o' direction='out'/>
+    </method>
+    <method name='Start'>
+      <arg type='o' direction='in'/>
+      <arg type='s' direction='in'/>
       <arg type='a{sv}' direction='in'/>
       <arg type='o' direction='out'/>
     </method>
