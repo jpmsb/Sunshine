@@ -17,8 +17,6 @@
 // local includes
 #include "config.h"
 #include "confighttp_validation.h"
-#include "platform/common.h"
-#include "process.h"
 
 namespace confighttp_validation {
   namespace fs = std::filesystem;
@@ -362,7 +360,7 @@ namespace confighttp_validation {
     };
 
     // Null optional fields are omitted by normalize_optional_app_fields() before persistence.
-    // Non-string image-path values are also omitted there (UI may send null or other JSON types).
+    // Non-string / whitespace-only image-path values are also omitted there.
     for (const auto field : string_fields) {
       if (!app.contains(field) || app.at(field).is_null()) {
         continue;
@@ -375,15 +373,16 @@ namespace confighttp_validation {
         return std::format("Invalid {}", field);
       }
 
-      if (const auto err = validate_string_field(field, app.at(field).get<std::string>(), MAX_APP_STRING_LENGTH, true)) {
-        return err;
+      auto value = app.at(field).get<std::string>();
+      if (field == "image-path"sv) {
+        boost::trim(value);
+        if (value.empty()) {
+          continue;
+        }
       }
-    }
 
-    if (app.contains("image-path") && app.at("image-path").is_string()) {
-      const auto image_path = app.at("image-path").get<std::string>();
-      if (!image_path.empty() && proc::validate_app_image_path(image_path) == proc::default_app_image_path()) {
-        return "Invalid image-path";
+      if (const auto err = validate_string_field(field, value, MAX_APP_STRING_LENGTH, true)) {
+        return err;
       }
     }
 
