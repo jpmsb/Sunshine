@@ -137,7 +137,7 @@ namespace confighttp_validation {
       }
     }
 
-    if (entry.contains("do")) {
+    if (entry.contains("do") && !entry.at("do").is_null()) {
       if (!entry.at("do").is_string()) {
         return "Invalid prep-cmd do field";
       }
@@ -146,7 +146,7 @@ namespace confighttp_validation {
       }
     }
 
-    if (entry.contains("undo")) {
+    if (entry.contains("undo") && !entry.at("undo").is_null()) {
       if (!entry.at("undo").is_string()) {
         return "Invalid prep-cmd undo field";
       }
@@ -155,7 +155,7 @@ namespace confighttp_validation {
       }
     }
 
-    if (entry.contains("elevated") && !entry.at("elevated").is_boolean()) {
+    if (entry.contains("elevated") && !entry.at("elevated").is_null() && !entry.at("elevated").is_boolean()) {
       return "Invalid prep-cmd elevated field";
     }
 
@@ -361,12 +361,17 @@ namespace confighttp_validation {
       "output"sv,
     };
 
+    // Null optional fields are omitted by normalize_optional_app_fields() before persistence.
+    // Non-string image-path values are also omitted there (UI may send null or other JSON types).
     for (const auto field : string_fields) {
-      if (!app.contains(field)) {
+      if (!app.contains(field) || app.at(field).is_null()) {
         continue;
       }
 
       if (!app.at(field).is_string()) {
+        if (field == "image-path"sv) {
+          continue;
+        }
         return std::format("Invalid {}", field);
       }
 
@@ -382,7 +387,7 @@ namespace confighttp_validation {
       }
     }
 
-    static constexpr std::array<std::string_view, 5> bool_fields {
+    static constexpr std::array<std::string_view, 4> bool_fields {
       "elevated"sv,
       "auto-detach"sv,
       "wait-all"sv,
@@ -390,16 +395,16 @@ namespace confighttp_validation {
     };
 
     for (const auto field : bool_fields) {
-      if (app.contains(field) && !app.at(field).is_boolean()) {
+      if (app.contains(field) && !app.at(field).is_null() && !app.at(field).is_boolean()) {
         return std::format("Invalid {}", field);
       }
     }
 
-    if (app.contains("exit-timeout") && !app.at("exit-timeout").is_number_integer()) {
+    if (app.contains("exit-timeout") && !app.at("exit-timeout").is_null() && !app.at("exit-timeout").is_number_integer()) {
       return "Invalid exit-timeout";
     }
 
-    if (app.contains("prep-cmd")) {
+    if (app.contains("prep-cmd") && !app.at("prep-cmd").is_null()) {
       if (!app.at("prep-cmd").is_array()) {
         return "Invalid prep-cmd";
       }
@@ -411,7 +416,7 @@ namespace confighttp_validation {
       }
     }
 
-    if (app.contains("detached")) {
+    if (app.contains("detached") && !app.at("detached").is_null()) {
       if (!app.at("detached").is_array()) {
         return "Invalid detached";
       }
