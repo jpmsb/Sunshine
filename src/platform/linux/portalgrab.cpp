@@ -403,8 +403,12 @@ namespace portal {
       if (!monitor_name.empty()) {
         return monitor_name;
       }
-      // Window streams omit a monitor name and may change size while streaming. Encode a
-      // stable id from the PipeWire node so resize does not look like display removal.
+      // Prefer geometry when the portal reported a size (typical monitor streams). Window
+      // streams often omit `size` (0x0); fall back to a PipeWire-node id so resize does not
+      // look like display removal.
+      if (width > 0 && height > 0) {
+        return std::format("position-{}x{}-resolution-{}x{}", pos_x, pos_y, width, height);
+      }
       return std::format("screencast-pw-{}", pipewire_node);
     }
 
