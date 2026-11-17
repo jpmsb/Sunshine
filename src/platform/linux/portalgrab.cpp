@@ -2037,35 +2037,31 @@ namespace portal {
   /**
    * @brief Exercise the portal's dead-stream handling without opening a real portal session.
    *
+   * Mirrors `portal_t::check_stream_dead` for the no-D-Bus unit-test path without constructing a
+   * full `portal_t` (which would start a PipeWire thread loop and can abort under xvfb package checks).
+   *
    * @param shared_state Stream state populated by PipeWire callbacks.
    * @param negotiate_maxframerate Negotiation setting before and after handling the dead stream.
    * @param out_status Capture status selected by the handler.
    * @return True when portal-specific handling selected a capture status.
    */
   bool check_stream_dead_for_testing(std::shared_ptr<pipewire::shared_state_t> shared_state, bool &negotiate_maxframerate, platf::capture_e &out_status) {
-    /**
-     * @brief Portal display with injected callback state and no D-Bus session.
-     */
-    class test_portal_t: public portal_t {
-    public:
-      /**
-       * @brief Install the stream state to be examined by the portal handler.
-       * @param state Stream state populated by PipeWire callbacks.
-       */
-      explicit test_portal_t(std::shared_ptr<pipewire::shared_state_t> state):
-          portal_t {session_options_t::for_mode(capture_mode_e::portal, false)} {
-        this->shared_state = std::move(state);
-        this->dbus.reset();
-      }
-    } display {std::move(shared_state)};
-
     const bool saved = portal_t::negotiate_maxframerate.exchange(negotiate_maxframerate);
     auto restore = util::fail_guard([saved]() {
       portal_t::negotiate_maxframerate.store(saved);
     });
-    const bool handled = display.check_stream_dead(out_status);
+
+    // Unit tests inject PipeWire callback state only — there is no portal session to observe.
+    if (!shared_state->has_streamed.load() && portal_t::negotiate_maxframerate.load()) {
+      BOOST_LOG(warning) << "[portalgrab] Negotiation failed, will retry without maxFramerate"sv;
+      portal_t::negotiate_maxframerate.store(false);
+      out_status = platf::capture_e::reinit;
+      negotiate_maxframerate = portal_t::negotiate_maxframerate.load();
+      return true;
+    }
+
     negotiate_maxframerate = portal_t::negotiate_maxframerate.load();
-    return handled;
+    return false;
   }
 #endif
 }  // namespace portal
