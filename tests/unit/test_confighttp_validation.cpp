@@ -85,6 +85,31 @@ TEST(ConfighttpValidationTest, ValidateAppJsonAcceptsMinimalApp) {
   ASSERT_FALSE(confighttp_validation::validate_app_json(app).has_value());
 }
 
+TEST(ConfighttpValidationTest, ValidateAppJsonAcceptsNullOptionalFields) {
+  const nlohmann::json app = {
+    {"name", "Null optional"},
+    {"index", -1},
+    {"image-path", nullptr},
+    {"cmd", nullptr},
+    {"prep-cmd", nullptr},
+    {"detached", nullptr},
+    {"elevated", nullptr},
+    {"exit-timeout", nullptr},
+  };
+
+  ASSERT_FALSE(confighttp_validation::validate_app_json(app).has_value());
+}
+
+TEST(ConfighttpValidationTest, ValidateAppJsonAcceptsNonStringImagePath) {
+  const nlohmann::json app = {
+    {"name", "Image path number"},
+    {"index", -1},
+    {"image-path", 42},
+  };
+
+  ASSERT_FALSE(confighttp_validation::validate_app_json(app).has_value());
+}
+
 TEST(ConfighttpValidationTest, ValidatePasswordChangeRejectsShortPassword) {
   const nlohmann::json input = {
     {"newUsername", "admin"},
