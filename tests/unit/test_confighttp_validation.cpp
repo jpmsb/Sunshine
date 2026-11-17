@@ -110,6 +110,26 @@ TEST(ConfighttpValidationTest, ValidateAppJsonAcceptsNonStringImagePath) {
   ASSERT_FALSE(confighttp_validation::validate_app_json(app).has_value());
 }
 
+TEST(ConfighttpValidationTest, ValidateAppJsonAcceptsWhitespaceOnlyImagePath) {
+  const nlohmann::json app = {
+    {"name", "Whitespace image path"},
+    {"index", -1},
+    {"image-path", " \t "},
+  };
+
+  ASSERT_FALSE(confighttp_validation::validate_app_json(app).has_value());
+}
+
+TEST(ConfighttpValidationTest, ValidateAppJsonAcceptsMissingCoverImagePath) {
+  const nlohmann::json app = {
+    {"name", "Missing cover"},
+    {"index", -1},
+    {"image-path", "/covers/cover.png"},
+  };
+
+  ASSERT_FALSE(confighttp_validation::validate_app_json(app).has_value());
+}
+
 TEST(ConfighttpValidationTest, ValidatePasswordChangeRejectsShortPassword) {
   const nlohmann::json input = {
     {"newUsername", "admin"},
