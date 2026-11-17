@@ -889,14 +889,19 @@ namespace pipewire {
           }
           break;
         case PW_STREAM_STATE_PAUSED:
-          // Window/monitor resize renegotiates format via STREAMING → PAUSED → STREAMING.
-          // Treating that pause as a dead stream forces a full display reinit that races the
-          // producer and often fails for portal window streams that omit ScreenCast `size`.
-          if (d->shared) {
-            std::scoped_lock lock(d->frame_mutex);
-            d->shared->current_state = state;
-            d->shared->previous_state = old;
-            d->shared->err_msg = "";
+          // An established stream that drops back to PAUSED is treated as dead so capture can
+          // recover. has_streamed keeps maxFramerate negotiation enabled across that recovery.
+          if (d->shared && old == PW_STREAM_STATE_STREAMING) {
+            {
+              std::scoped_lock lock(d->frame_mutex);
+              d->frame_ready = false;
+              d->current_buffer = nullptr;
+              d->shared->stream_dead.store(true);
+              d->shared->current_state = state;
+              d->shared->previous_state = old;
+              d->shared->err_msg = "";
+            }
+            d->frame_cv.notify_all();
           }
           break;
         case PW_STREAM_STATE_ERROR:
