@@ -24,7 +24,7 @@ Version: %{build_version}
 Release: 1%{?dist}
 Summary: Self-hosted game stream host for Moonlight
 License: GPL-3.0-only
-URL: https://github.com/LizardByte/Sunshine
+URL: https://github.com/SunshineStream/Sunshine
 Source0: tarball.tar.gz
 
 # Common BuildRequires

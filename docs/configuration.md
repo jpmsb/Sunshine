@@ -810,10 +810,11 @@ consent prompt for directory ACLs, so the Web UI shows setup steps for correctin
             **FreeBSD/Linux + pipewire:**
             <br>
             @code{}
-            pactl info | grep Source
-            # in some causes you'd need to use the `Sink` device, if `Source` doesn't work, so try:
-            pactl info | grep Sink
+            pactl list short sinks
             @endcode
+            <br>
+            <br>
+            Copy the sink name (second column) into `audio_sink`.
             <br>
             <br>
             **macOS:**
@@ -1518,6 +1519,31 @@ consent prompt for directory ACLs, so the Web UI shows setup steps for correctin
     </tr>
 </table>
 
+### max_stream_resolution
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            The maximum resolution (formatted as WIDTHxHEIGHT) that Sunshine will stream at. Larger client requests
+            are downscaled, preserving aspect ratio. Lowering this reduces encoding latency on hosts where the
+            encoder cannot keep up with the requested resolution. If empty, the resolution requested by Moonlight
+            is used.
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            max_stream_resolution = 2560x1440
+            @endcode</td>
+    </tr>
+</table>
+
 ### minimum_fps_target
 
 <table>
@@ -1968,6 +1994,32 @@ min_log_level = 2
         <td>Example</td>
         <td colspan="2">@code{}
             packetsize = 1346
+            @endcode</td>
+    </tr>
+</table>
+
+### dscp_tagging
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Mark audio and video packets with DSCP priority tags when requested by the client.
+            @tip{Disabling this may help if audio crackles or stutters on Wi-Fi while the network otherwise appears
+            healthy. Some routers handle tagged traffic poorly.}
+            @note{On Windows, disabling this also removes local traffic prioritization.}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            enabled
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            dscp_tagging = disabled
             @endcode</td>
     </tr>
 </table>
@@ -2488,7 +2540,7 @@ min_log_level = 2
             @endcode</td>
     </tr>
     <tr>
-        <td rowspan="5">Choices</td>
+        <td rowspan="7">Choices</td>
         <td>nvenc</td>
         <td>For NVIDIA graphics cards</td>
     </tr>
@@ -2508,6 +2560,11 @@ min_log_level = 2
         <td>vulkan</td>
         <td>Use Vulkan encoder (AMD, Intel, NVIDIA).
             @note{Applies to Linux only.}</td>
+    </tr>
+    <tr>
+        <td>videotoolbox</td>
+        <td>Use VideoToolbox.
+            @note{Applies to macOS only.}</td>
     </tr>
     <tr>
         <td>software</td>
@@ -3224,7 +3281,7 @@ min_log_level = 2
     <tr>
         <td>Description</td>
         <td colspan="2">
-            The entropy encoding to use.
+            The entropy encoding to use for H.264.
             @note{This option only applies when using macOS.}
         </td>
     </tr>
@@ -3243,56 +3300,15 @@ min_log_level = 2
     <tr>
         <td rowspan="3">Choices</td>
         <td>auto</td>
-        <td>let ffmpeg decide</td>
+        <td>let VideoToolbox decide</td>
     </tr>
     <tr>
         <td>cabac</td>
-        <td>context adaptive binary arithmetic coding - faster decode</td>
+        <td>context adaptive binary arithmetic coding - higher quality</td>
     </tr>
     <tr>
         <td>cavlc</td>
-        <td>context adaptive variable-length coding - higher quality</td>
-    </tr>
-</table>
-
-### vt_software
-
-<table>
-    <tr>
-        <td>Description</td>
-        <td colspan="2">
-            Force Video Toolbox to use software encoding.
-            @note{This option only applies when using macOS.}
-        </td>
-    </tr>
-    <tr>
-        <td>Default</td>
-        <td colspan="2">@code{}
-            auto
-            @endcode</td>
-    </tr>
-    <tr>
-        <td>Example</td>
-        <td colspan="2">@code{}
-            vt_software = auto
-            @endcode</td>
-    </tr>
-    <tr>
-        <td rowspan="4">Choices</td>
-        <td>auto</td>
-        <td>let ffmpeg decide</td>
-    </tr>
-    <tr>
-        <td>disabled</td>
-        <td>disable software encoding</td>
-    </tr>
-    <tr>
-        <td>allowed</td>
-        <td>allow software encoding</td>
-    </tr>
-    <tr>
-        <td>forced</td>
-        <td>force software encoding</td>
+        <td>context adaptive variable-length coding - faster decode</td>
     </tr>
 </table>
 

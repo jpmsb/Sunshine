@@ -14,6 +14,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  organization:
+    uses: LizardByte/.github/.github/workflows/__call-organization.yml@master
+
   github-env:
     name: GitHub Env Debug
     permissions:
@@ -21,10 +24,14 @@ jobs:
     uses: LizardByte/.github/.github/workflows/__call-github-env.yml@master
 
   release-setup:
+    needs: organization
     name: Release Setup
     outputs:
       # release-setup crashes on workflow_dispatch (no event.commits); use the manual fallback then.
-      publish_release: ${{ steps.release-setup.outputs.publish_release || steps.release-setup-manual.outputs.publish_release }}
+      # Gate publish_release on organization.allowed for upstream org transfer; keep manual fallback for forks.
+      publish_release: >-
+        ${{ (needs.organization.outputs.allowed == 'true' || github.repository == 'jpmsb/Sunshine') &&
+        (steps.release-setup.outputs.publish_release == 'true' || steps.release-setup-manual.outputs.publish_release == 'true') }}
       release_body: ${{ steps.release-setup.outputs.release_body || steps.release-setup-manual.outputs.release_body }}
       release_commit: ${{ steps.release-setup.outputs.release_commit || steps.release-setup-manual.outputs.release_commit }}
       release_generate_release_notes: ${{ steps.release-setup.outputs.release_generate_release_notes || steps.release-setup-manual.outputs.release_generate_release_notes }}
@@ -40,7 +47,7 @@ jobs:
       - name: Release Setup
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         id: release-setup
-        uses: LizardByte/actions/actions/release_setup@0528b495e6af82b4d698ec6c907a9b1842622068  # v2026.1029.234422
+        uses: LizardByte/actions/actions/release_setup@5cffab388578559f85fa83c6f7bfff244e06600d  # v2026.1108.210022
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -246,8 +253,9 @@ jobs:
     if: >-
       always() &&
       !cancelled() &&
-      startsWith(github.repository, 'LizardByte/')
+      needs.organization.outputs.allowed == 'true'
     needs:
+      - organization
       - build-freebsd
       - build-linux
       - build-archlinux
@@ -344,7 +352,7 @@ jobs:
       !cancelled() &&
       needs.release-setup.result == 'success' &&
       needs.release-setup.outputs.publish_release == 'true' &&
-      (github.repository == 'jpmsb/Sunshine' || startsWith(github.repository, 'LizardByte/')) &&
+      (needs.organization.outputs.allowed == 'true' || github.repository == 'jpmsb/Sunshine') &&
       needs.build-archlinux.result == 'success' &&
       needs.build-opensuse-tumbleweed.result == 'success' &&
       needs.build-alpine.result == 'success' &&
@@ -357,6 +365,7 @@ jobs:
       needs.build-windows.result == 'success' &&
       (needs.build-docker.result == 'success' || needs.build-docker.result == 'skipped')
     needs:
+      - organization
       - release-setup
       - build-archlinux
       - build-opensuse-tumbleweed
@@ -384,7 +393,7 @@ jobs:
         run: ls -l artifacts
 
       - name: Create/Update GitHub Release
-        uses: LizardByte/actions/actions/release_create@0528b495e6af82b4d698ec6c907a9b1842622068  # v2026.1029.234422
+        uses: LizardByte/actions/actions/release_create@5cffab388578559f85fa83c6f7bfff244e06600d  # v2026.1108.210022
         with:
           allowUpdates: false
           body: ${{ needs.release-setup.outputs.release_body }}
@@ -399,8 +408,9 @@ jobs:
     name: Release Homebrew Beta
     if:
       needs.release-setup.outputs.publish_release == 'true' &&
-      startsWith(github.repository, 'LizardByte/')
+      needs.organization.outputs.allowed == 'true'
     needs:
+      - organization
       - release-setup
       - build-homebrew
       - release
