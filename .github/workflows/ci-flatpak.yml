@@ -36,7 +36,7 @@ jobs:
     steps:
       - name: More space
         if: matrix.arch == 'x86_64'
-        uses: LizardByte/actions/actions/more_space@5cffab388578559f85fa83c6f7bfff244e06600d  # v2026.1108.210022
+        uses: LizardByte/actions/actions/more_space@81873587bacc6842098865a35bbb32f2f21cee3b  # v2026.1123.33249
         with:
           analyze-space-savings: true
           clean-all: true
@@ -53,7 +53,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d  # v10.4.0
         with:
           enable-cache: true
 
@@ -302,8 +302,8 @@ jobs:
           cp "./package-lock.json" "./flathub/"
           cp "./packaging/linux/flatpak/README.md" "./flathub/"
           cp "./packaging/linux/flatpak/flathub.json" "./flathub/"
+          # Includes the Git source lists referenced by the Sunshine module.
           cp -r "./packaging/linux/flatpak/modules/." "./flathub/modules/"
-          # submodules will need to be handled in the workflow that creates the PR
 
           # create the archive
           tar -czf ./artifacts/flathub.tar.gz -C ./flathub .

@@ -18,68 +18,11 @@ if(NOT DEFINED FFMPEG_PREPARED_BINARIES)
     # Determine download location
     set(FFMPEG_DOWNLOAD_DIR "${CMAKE_BINARY_DIR}/_deps")
 
-    set(FFMPEG_RELEASE_TAG "")
-    # RPM/OBS/COPR tarballs strip build-deps/.git; prepare_rpm_source.sh writes this stamp
-    # so we still download the FFmpeg bundle that matches the pinned submodule (not latest).
-    set(_SUNSHINE_FFMPEG_TAG_FILE
-            "${CMAKE_SOURCE_DIR}/packaging/linux/.sunshine-ffmpeg-tag")
-    if(EXISTS "${_SUNSHINE_FFMPEG_TAG_FILE}")
-        file(READ "${_SUNSHINE_FFMPEG_TAG_FILE}" FFMPEG_RELEASE_TAG)
-        string(STRIP "${FFMPEG_RELEASE_TAG}" FFMPEG_RELEASE_TAG)
-        if(FFMPEG_RELEASE_TAG)
-            message(STATUS "Using FFmpeg tag from packaging stamp: ${FFMPEG_RELEASE_TAG}")
-        endif()
-    endif()
-
-    if(NOT FFMPEG_RELEASE_TAG)
-        # Fetch tags for the build-deps submodule so tag lookups work in CI shallow clones
-        execute_process(
-            COMMAND git -C "${CMAKE_SOURCE_DIR}/third-party/build-deps" fetch --tags --depth=1
-            OUTPUT_QUIET
-            ERROR_QUIET
-        )
-
-        # Get the current commit/tag from the build-deps submodule
-        execute_process(
-            COMMAND git -C "${CMAKE_SOURCE_DIR}/third-party/build-deps" describe --tags --exact-match
-            OUTPUT_VARIABLE FFMPEG_RELEASE_TAG
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-        )
-    endif()
-
-    # If no exact tag match, try to get the commit hash and look for a tag
-    if(NOT FFMPEG_RELEASE_TAG)
-        execute_process(
-            COMMAND git -C "${CMAKE_SOURCE_DIR}/third-party/build-deps" rev-parse HEAD
-            OUTPUT_VARIABLE BUILD_DEPS_COMMIT
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-        )
-
-        # Try to find a tag that points to this commit
-        execute_process(
-            COMMAND git -C "${CMAKE_SOURCE_DIR}/third-party/build-deps" tag --points-at ${BUILD_DEPS_COMMIT}
-            OUTPUT_VARIABLE FFMPEG_RELEASE_TAG
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-        )
-    endif()
-
-    # Set GitHub release URL
+    # Use the release pinned alongside the build-deps-owned codec headers.
     set(FFMPEG_GITHUB_REPO "LizardByte/build-deps")
-    if(FFMPEG_RELEASE_TAG)
-        set(FFMPEG_RELEASE_URL "https://github.com/${FFMPEG_GITHUB_REPO}/releases/download/${FFMPEG_RELEASE_TAG}")
-        set(FFMPEG_VERSION_DIR "${FFMPEG_DOWNLOAD_DIR}/ffmpeg-${FFMPEG_RELEASE_TAG}")
-        message(STATUS "Using FFmpeg from build-deps tag: ${FFMPEG_RELEASE_TAG}")
-    else()
-        message(FATAL_ERROR
-                "Could not resolve a build-deps FFmpeg release tag.\n"
-                "Initialize third-party/build-deps, or ensure packaging wrote\n"
-                "  ${_SUNSHINE_FFMPEG_TAG_FILE}\n"
-                "Falling back to 'latest' is disabled because newer bundles can ship\n"
-                "ffnvcodec headers that break the NVENCAPI_VERSION guard.")
-    endif()
+    set(FFMPEG_RELEASE_URL "https://github.com/${FFMPEG_GITHUB_REPO}/releases/download/${BUILD_DEPS_TAG}")
+    set(FFMPEG_VERSION_DIR "${FFMPEG_DOWNLOAD_DIR}/ffmpeg-${BUILD_DEPS_TAG}")
+    message(STATUS "Using FFmpeg from build-deps tag: ${BUILD_DEPS_TAG}")
 
     # Set extraction directory and prepared binaries path
     set(FFMPEG_EXTRACT_DIR "${FFMPEG_VERSION_DIR}")
@@ -258,21 +201,6 @@ endif()
 
 set(FFMPEG_INCLUDE_DIRS "${FFMPEG_PREPARED_BINARIES}/include")
 
-# Some architecture FFmpeg packages omit NVIDIA ffnvcodec headers (e.g. FreeBSD aarch64).
-# Non-Apple Unix still needs them for NVENC legacy AVOption constants in config.cpp.
-# Prefer the package headers when present; otherwise fall back to the build-deps submodule.
-if(NOT WIN32 AND NOT EXISTS "${FFMPEG_PREPARED_BINARIES}/include/ffnvcodec/nvEncodeAPI.h")
-    set(_FFMPEG_NV_CODEC_HEADERS_FALLBACK
-            "${CMAKE_SOURCE_DIR}/third-party/build-deps/third-party/FFmpeg/nv-codec-headers/include")
-    if(EXISTS "${_FFMPEG_NV_CODEC_HEADERS_FALLBACK}/ffnvcodec/nvEncodeAPI.h")
-        message(STATUS
-                "FFmpeg package has no ffnvcodec headers; using build-deps nv-codec-headers at "
-                "${_FFMPEG_NV_CODEC_HEADERS_FALLBACK}")
-        list(APPEND FFMPEG_INCLUDE_DIRS "${_FFMPEG_NV_CODEC_HEADERS_FALLBACK}")
-    endif()
-    unset(_FFMPEG_NV_CODEC_HEADERS_FALLBACK)
-endif()
-
 if(UNIX AND NOT APPLE)
     find_package(Libva REQUIRED)
 
@@ -327,9 +255,6 @@ if(UNIX AND NOT APPLE)
         file(COPY "${FFMPEG_PREPARED_BINARIES}/include/" DESTINATION "${FFMPEG_INCLUDE_DIRS}" PATTERN "va" EXCLUDE)
     endif()
     set(_sunshine_bundled_include "${FFMPEG_PREPARED_BINARIES}/include")
-    if(NV_CODEC_HEADERS_13_1_INCLUDE_DIR STREQUAL _sunshine_bundled_include)
-        set(NV_CODEC_HEADERS_13_1_INCLUDE_DIR "${FFMPEG_INCLUDE_DIRS}")
-    endif()
     foreach(dependency FFMPEG OPUS)
         if(TARGET PkgConfig::SUNSHINE_BUNDLED_${dependency})
             get_target_property(_sunshine_include_dirs
@@ -349,14 +274,4 @@ if(UNIX AND NOT APPLE)
                     INTERFACE_INCLUDE_DIRECTORIES "${_sunshine_system_include_dirs}")
         endif()
     endforeach()
-
-    # Re-apply ffnvcodec fallback after replacing the include tree (va/ excluded copy).
-    if(NOT EXISTS "${FFMPEG_INCLUDE_DIRS}/ffnvcodec/nvEncodeAPI.h")
-        set(_FFMPEG_NV_CODEC_HEADERS_FALLBACK
-                "${CMAKE_SOURCE_DIR}/third-party/build-deps/third-party/FFmpeg/nv-codec-headers/include")
-        if(EXISTS "${_FFMPEG_NV_CODEC_HEADERS_FALLBACK}/ffnvcodec/nvEncodeAPI.h")
-            list(APPEND FFMPEG_INCLUDE_DIRS "${_FFMPEG_NV_CODEC_HEADERS_FALLBACK}")
-        endif()
-        unset(_FFMPEG_NV_CODEC_HEADERS_FALLBACK)
-    endif()
 endif()

@@ -111,9 +111,9 @@ file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS
 
 # Upstream tray ships notification_utils for integration tests; the fork tray may not.
 set(SUNSHINE_TRAY_NOTIFICATION_UTILS
-        "${CMAKE_SOURCE_DIR}/third-party/tray/tests/notification_utils.cpp")
+        "${tray_SOURCE_DIR}/tests/notification_utils.cpp")
 set(SUNSHINE_TRAY_SCREENSHOT_UTILS
-        "${CMAKE_SOURCE_DIR}/third-party/tray/tests/screenshot_utils.cpp")
+        "${tray_SOURCE_DIR}/tests/screenshot_utils.cpp")
 set(SUNSHINE_TRAY_TEST_HELPERS_AVAILABLE OFF)
 
 if(SUNSHINE_ENABLE_TRAY AND (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
@@ -132,7 +132,7 @@ if(SUNSHINE_ENABLE_TRAY AND (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux
 
         if(WIN32 OR APPLE)
             configure_file(
-                    "${CMAKE_SOURCE_DIR}/third-party/libvirtualhid/libvirtualhid.svg"
+                    "${libvirtualhid_SOURCE_DIR}/libvirtualhid.svg"
                     "${SUNSHINE_TRAY_TEST_ICON_DESTINATION_DIR}/logo-libvirtualhid.svg"
                     COPYONLY)
         endif()
@@ -180,8 +180,9 @@ if(SUNSHINE_ENABLE_TRAY AND (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux
         set_target_properties(sunshine_tray_test_helpers PROPERTIES
                 CXX_STANDARD 17
                 CXX_STANDARD_REQUIRED ON)
-        target_include_directories(sunshine_tray_test_helpers PRIVATE
-                ${CMAKE_SOURCE_DIR}/third-party/tray)
+        target_include_directories(sunshine_tray_test_helpers
+                PUBLIC "${tray_SOURCE_DIR}/tests"
+                PRIVATE "${tray_SOURCE_DIR}")
         target_link_libraries(sunshine_tray_test_helpers PRIVATE
                 lizardbyte::common)
 
@@ -205,7 +206,7 @@ if(SUNSHINE_ENABLE_TRAY AND (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux
 endif()
 
 # Skip tray integration tests on every OS when helpers are unavailable (e.g. FreeBSD,
-# or Linux/macOS/Windows when notification_utils is missing from the tray submodule).
+# or Linux/macOS/Windows when notification_utils is missing from the tray package).
 if(NOT SUNSHINE_TRAY_TEST_HELPERS_AVAILABLE)
     message(STATUS
             "Tray test helpers unavailable; skipping system tray integration tests")
@@ -345,3 +346,7 @@ if (WIN32)
         )
     endif()
 endif ()
+
+# Exercise the same negotiation implementation used by the client transport.
+target_sources(${PROJECT_NAME} PRIVATE
+        "${moonlight-common-c_SOURCE_DIR}/src/VideoFormats.c")

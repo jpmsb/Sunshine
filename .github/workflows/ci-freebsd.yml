@@ -119,7 +119,7 @@ jobs:
               --python "/usr/local/bin/python${PYTHON_VERSION}" \
               --no-python-downloads \
               --no-install-project
-            # uv.lock pins external artifacts; the reviewed vendored glad2 build hook is required.
+            # uv.lock pins the source artifact for MarkupSafe, which has no FreeBSD wheel.
             uv sync "$@"  # NOSONAR(githubactions:S8541, githubactions:S8544)
             set -- \
               --project third-party/lizardbyte-common \
@@ -238,7 +238,8 @@ jobs:
           cd "${GITHUB_WORKSPACE}/build/tests"
 
           export DISPLAY=:1
-          Xvfb ${DISPLAY} -screen 0 1024x768x24 &
+          # Do not reset the server when enumeration closes the last X11 connection.
+          Xvfb ${DISPLAY} -screen 0 1024x768x24 -noreset &
           XVFB_PID=$!
           trap 'kill "${XVFB_PID}" 2>/dev/null || true; wait "${XVFB_PID}" 2>/dev/null || true' EXIT
 
