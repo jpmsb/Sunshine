@@ -2,12 +2,14 @@
   {
     "type": "git",
     "x-renovate": {
-      "datasource": "github-tags",
-      "depName": "LizardByte/tray"
+      "datasource": "git-refs",
+      "depName": "jpmsb/tray",
+      "packageName": "https://github.com/jpmsb/tray.git",
+      "versioning": "exact",
+      "ref": "notification-actions"
     },
-    "url": "https://github.com/LizardByte/tray.git",
-    "tag": "v2026.1117.200659",
-    "commit": "c7b35bb6e3d32b5ce03ce9ef14c25cc178927b2e",
+    "url": "https://github.com/jpmsb/tray.git",
+    "commit": "7b4d933a546350961491c77dba373c9e6aeaf74e",
     "dest": "flatpak-cpm/tray",
     "disable-submodules": true
   }
