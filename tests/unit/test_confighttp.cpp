@@ -119,10 +119,16 @@ protected:
   std::filesystem::path key_file;
   std::filesystem::path web_dir_test_file;
   std::string saved_file_state;
+  std::filesystem::path temp_state_file;  ///< Isolated state file so tests never touch the user's paired clients.
   std::string saved_config_file;
 
   void SetUp() override {
     BaseTest::SetUp();
+    // Redirect persisted state before anything can save it, so the real sunshine_state.json is never rewritten.
+    saved_file_state = config::nvhttp.file_state;
+    temp_state_file = std::filesystem::temp_directory_path() / "sunshine_test_confighttp_state.json";  // NOSONAR(cpp:S5443) - safe for tests
+    std::filesystem::remove(temp_state_file);
+    config::nvhttp.file_state = temp_state_file.string();
     nvhttp::expire_pair_sessions(std::chrono::steady_clock::time_point::max());
     confighttp::set_virtual_input_license_status_provider_for_testing([]() {
       lvh::LicenseStatus license;
@@ -144,7 +150,6 @@ protected:
     saved_locale = config::sunshine.locale;
     saved_pin_stdin = config::sunshine.flags.test(config::flag::PIN_STDIN);
     saved_csrf_allowed_origins = config::sunshine.csrf_allowed_origins;
-    saved_file_state = config::nvhttp.file_state;
     saved_config_file = config::sunshine.config_file;
 
     // Set up test credentials
@@ -429,8 +434,9 @@ protected:
     config::sunshine.flags[config::flag::PIN_STDIN] = saved_pin_stdin;
     config::sunshine.config_file = saved_config_file;
     config::sunshine.csrf_allowed_origins = saved_csrf_allowed_origins;
+    nvhttp::erase_all_clients();  // while still redirected to the temporary state file
     config::nvhttp.file_state = saved_file_state;
-    nvhttp::erase_all_clients();
+    std::filesystem::remove(temp_state_file);
     nvhttp::expire_pair_sessions(std::chrono::steady_clock::time_point::max());
 
     // Clean up test HTML file from the web assets directory
@@ -1324,11 +1330,6 @@ TEST_F(ConfigHttpTest, GetConfigReportsPinStdinEnabled) {
 
 // Test: confighttp::updateClient() renames a paired client
 TEST_F(ConfigHttpTest, UpdateClientWithNameReturnsSuccess) {
-  const auto temp_state_file = std::filesystem::temp_directory_path() / "sunshine_test_confighttp_state.json";  // NOSONAR(cpp:S5443) - safe for tests
-  if (std::filesystem::exists(temp_state_file)) {
-    std::filesystem::remove(temp_state_file);
-  }
-  config::nvhttp.file_state = temp_state_file.string();
   nvhttp::erase_all_clients();
 
   constexpr auto test_uuid = "4D7BB2DD-5704-A405-B41C-891A022932F1";
@@ -1360,10 +1361,6 @@ TEST_F(ConfigHttpTest, UpdateClientWithNameReturnsSuccess) {
   const auto clients = nvhttp::get_all_clients();
   ASSERT_EQ(clients.size(), 1);
   EXPECT_EQ(clients[0]["name"], "Living Room TV");
-
-  if (std::filesystem::exists(temp_state_file)) {
-    std::filesystem::remove(temp_state_file);
-  }
 }
 
 /**
